@@ -15,6 +15,7 @@ pub mod twap_oracle;
 pub mod upgrade;
 pub mod user_profile;
 pub mod vault;
+pub mod vesting_vault;
 pub mod zkp_attestation;
 
 #[cfg(kani)]
@@ -30,6 +31,8 @@ mod test;
 mod treasury_test;
 #[cfg(test)]
 mod upgrade_test;
+#[cfg(test)]
+mod vesting_vault_test;
 
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Vec};
 
@@ -704,6 +707,78 @@ impl TaskManagerContract {
         events::emit_milestone_rejected(&env, task_id, milestone_id, feedback);
     }
 
+    /// Approve a milestone and create a time-locked vesting vault for the
+    /// payout. The funds remain in escrow for the vesting period instead of
+    /// being transferred immediately to the assignee.
+    pub fn approve_milestone_with_vesting(
+        env: Env,
+        caller: Address,
+        task_id: u32,
+        milestone_id: u32,
+        vesting_period: u64,
+        feedback: Option<String>,
+    ) -> u32 {
+        caller.require_auth();
+
+        let task: Task = env
+            .storage()
+            .instance()
+            .get(&DataKey::Task(task_id))
+            .unwrap_or_else(|| panic!("task not found"));
+
+        // Only creator or admin can approve
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if caller != task.created_by && caller != admin {
+            panic!("not authorized");
+        }
+
+        let amount =
+            escrow::approve_milestone(env.clone(), task_id, milestone_id, feedback.clone());
+
+        let token_contract: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::TokenContract)
+            .unwrap();
+        let assignee = task.assignee.clone().unwrap();
+
+        // Create vesting vault instead of transferring immediately
+        let vault_id = vesting_vault::create_vesting_vault(
+            env.clone(),
+            task_id,
+            milestone_id,
+            assignee.clone(),
+            amount,
+            token_contract,
+            vesting_period,
+        );
+
+        let vault = vesting_vault::get_vault(&env, vault_id).unwrap();
+        events::emit_vesting_vault_created(
+            &env,
+            vault_id,
+            task_id,
+            milestone_id,
+            assignee.clone(),
+            amount,
+            vault.vesting_end,
+        );
+
+        events::emit_milestone_approved(&env, task_id, milestone_id, amount);
+
+        // Award reputation
+        reputation::award_reputation(
+            env.clone(),
+            assignee,
+            reputation::points_for_event(reputation::ReputationEventType::MilestoneApproved),
+            reputation::ReputationEventType::MilestoneApproved,
+            Some(task_id),
+            String::from_str(&env, "Milestone approved with vesting"),
+        );
+
+        vault_id
+    }
+
     pub fn get_milestones(env: Env, task_id: u32) -> Vec<escrow::Milestone> {
         escrow::get_milestones_for_task(env, task_id)
     }
@@ -1165,6 +1240,127 @@ impl TaskManagerContract {
     ) {
         claimant.require_auth();
         vault::claim_payroll(&env, claimant, token, payroll_id, amount, proof);
+    }
+
+    // ========================================================================
+    // Vesting Vaults (Time-Locked Milestone Payouts)
+    // ========================================================================
+
+    /// Create a time-locked vesting vault for an approved milestone payout.
+    /// The funds are held for a safety window during which disputes can be
+    /// opened. After the vesting period, the beneficiary can claim the funds
+    /// if no dispute is active.
+    pub fn create_vesting_vault(
+        env: Env,
+        caller: Address,
+        task_id: u32,
+        milestone_id: u32,
+        beneficiary: Address,
+        amount: i128,
+        token: Address,
+        vesting_period: u64,
+    ) -> u32 {
+        caller.require_auth();
+
+        // Verify caller is task creator or admin
+        let task: Task = env
+            .storage()
+            .instance()
+            .get(&DataKey::Task(task_id))
+            .unwrap_or_else(|| panic!("task not found"));
+
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if caller != task.created_by && caller != admin {
+            panic!("not authorized");
+        }
+
+        let vault_id = vesting_vault::create_vesting_vault(
+            env.clone(),
+            task_id,
+            milestone_id,
+            beneficiary.clone(),
+            amount,
+            token,
+            vesting_period,
+        );
+
+        let vault = vesting_vault::get_vault(&env, vault_id).unwrap();
+        events::emit_vesting_vault_created(
+            &env,
+            vault_id,
+            task_id,
+            milestone_id,
+            beneficiary,
+            amount,
+            vault.vesting_end,
+        );
+
+        vault_id
+    }
+
+    /// Open a dispute on an active vesting vault. Only admin or task creator
+    /// can dispute during the vesting period.
+    pub fn dispute_vesting_vault(
+        env: Env,
+        caller: Address,
+        vault_id: u32,
+        reason: String,
+    ) {
+        vesting_vault::dispute_vesting_vault(env.clone(), caller.clone(), vault_id, reason.clone());
+        events::emit_vesting_vault_disputed(&env, vault_id, caller, reason);
+    }
+
+    /// Release vested funds to the beneficiary after the vesting period ends.
+    /// Only callable if no dispute is active.
+    pub fn release_vesting_vault(env: Env, caller: Address, vault_id: u32) -> i128 {
+        let vault = vesting_vault::get_vault(&env, vault_id).unwrap();
+        let beneficiary = vault.beneficiary.clone();
+        let amount = vesting_vault::release_vesting_vault(env.clone(), caller, vault_id);
+        events::emit_vesting_vault_released(&env, vault_id, beneficiary, amount);
+        amount
+    }
+
+    /// Refund disputed vault funds back to the task creator. Only admin can
+    /// refund a disputed vault.
+    pub fn refund_vesting_vault(env: Env, admin: Address, vault_id: u32) -> i128 {
+        let vault = vesting_vault::get_vault(&env, vault_id).unwrap();
+        let task: Task = env
+            .storage()
+            .instance()
+            .get(&DataKey::Task(vault.task_id))
+            .unwrap();
+        let amount = vesting_vault::refund_vesting_vault(env.clone(), admin, vault_id);
+        events::emit_vesting_vault_refunded(&env, vault_id, task.created_by, amount);
+        amount
+    }
+
+    /// Get vesting vault details.
+    pub fn get_vesting_vault(
+        env: Env,
+        vault_id: u32,
+    ) -> Option<vesting_vault::VestingVault> {
+        vesting_vault::get_vault(&env, vault_id)
+    }
+
+    /// Get all vault IDs for a task.
+    pub fn get_task_vesting_vaults(env: Env, task_id: u32) -> Vec<u32> {
+        vesting_vault::get_task_vaults(&env, task_id)
+    }
+
+    /// Get all vault IDs for a beneficiary.
+    pub fn get_beneficiary_vesting_vaults(env: Env, beneficiary: Address) -> Vec<u32> {
+        vesting_vault::get_beneficiary_vaults(&env, &beneficiary)
+    }
+
+    /// Check if a vault's vesting period is complete.
+    pub fn is_vesting_complete(env: Env, vault_id: u32) -> bool {
+        vesting_vault::is_vesting_complete(&env, vault_id)
+    }
+
+    /// Get remaining vesting time in seconds. Returns 0 if vesting is complete
+    /// or vault is not active.
+    pub fn get_remaining_vesting_time(env: Env, vault_id: u32) -> u64 {
+        vesting_vault::get_remaining_vesting_time(&env, vault_id)
     }
 
     // ========================================================================
