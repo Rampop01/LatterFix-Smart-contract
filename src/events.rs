@@ -405,6 +405,66 @@ pub fn emit_upgrade_timelock_updated(
     );
 }
 
+// ── Vesting Vault Events ───────────────────────────────────────────────────
+
+pub fn emit_vesting_vault_created(
+    env: &Env,
+    vault_id: u32,
+    task_id: u32,
+    milestone_id: u32,
+    beneficiary: Address,
+    amount: i128,
+    vesting_end: u64,
+) {
+    env.events().publish(
+        (symbol_short!("vv_new"), vault_id),
+        (
+            task_id,
+            milestone_id,
+            beneficiary,
+            amount,
+            vesting_end,
+            env.ledger().timestamp(),
+        ),
+    );
+}
+
+pub fn emit_vesting_vault_disputed(
+    env: &Env,
+    vault_id: u32,
+    disputed_by: Address,
+    reason: String,
+) {
+    env.events().publish(
+        (symbol_short!("vv_disp"), vault_id),
+        (disputed_by, reason, env.ledger().timestamp()),
+    );
+}
+
+pub fn emit_vesting_vault_released(
+    env: &Env,
+    vault_id: u32,
+    beneficiary: Address,
+    amount: i128,
+) {
+    env.events().publish(
+        (symbol_short!("vv_rel"), vault_id),
+        (beneficiary, amount, env.ledger().timestamp()),
+    );
+}
+
+pub fn emit_vesting_vault_refunded(
+    env: &Env,
+    vault_id: u32,
+    task_creator: Address,
+    amount: i128,
+) {
+    env.events().publish(
+        (symbol_short!("vv_ref"), vault_id),
+        (task_creator, amount, env.ledger().timestamp()),
+    );
+}
+
 // ── Reward Treasury Events ─────────────────────────────────────────────────
 
 pub fn emit_treasury_funded(env: &Env, funder: Address, amount: i128, new_balance: i128) {
