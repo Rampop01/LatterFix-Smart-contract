@@ -5,10 +5,26 @@
 [![Stellar](https://img.shields.io/badge/Stellar-Soroban%2021-blue.svg)](https://stellar.org)
 [![Tests](https://img.shields.io/badge/Tests-Passing-brightgreen.svg)](https://github.com/LatterFixxx/LatterFix-Smart-contract)
 
+<p align="center">
+  <img src="assets/latterfix_hero_banner.png" alt="LatterFix Hero Banner" width="100%" />
+</p>
+
 <div align="center">
   <h3>TaskManager Pro — Soroban Smart Contract</h3>
   <p><i>Enterprise-grade decentralized task management protocol with escrow, governance, and reputation system on the Stellar Network.</i></p>
 </div>
+
+---
+
+## What is LatterFix?
+
+**LatterFix** (TaskManager Pro) is a decentralized platform designed to redefine how organizations and independent builders collaborate. By replacing trust-based arrangements with automated, secure, and verifiable smart contract workflows, LatterFix ensures that contributors get paid for their verified contributions while creators get the quality deliverables they expect.
+
+### Core Pillars:
+1. **Decentralized Escrows & Milestones**: Funds are locked in a secure smart contract when tasks are created. Payments can be released incrementally through predefined milestones or fully upon total task verification.
+2. **On-Chain Reputation System**: Every contributor has a dynamically adjusted reputation score. Reputation grows with successful task completions and milestone approvals, and drops with cancellations or lost disputes.
+3. **Decentralized Governance**: Platform parameters and configurations are governed by the community. Proposal weight is tied directly to users' on-chain reputation scores, encouraging positive participation.
+4. **Built-in Dispute Resolution**: If disputes arise during the delivery cycle, platform administrators or delegated moderators can mediate and split the escrowed funds fairly based on the evidence provided.
 
 ---
 
