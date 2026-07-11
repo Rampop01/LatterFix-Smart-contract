@@ -2,77 +2,166 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/Rust-1.84%2B-orange.svg)](https://www.rust-lang.org)
-[![Stellar](https://img.shields.io/badge/Stellar-Soroban-blue.svg)](https://stellar.org)
-[![Tests](https://img.shields.io/badge/Tests-5%2F5%20Passing-brightgreen.svg)](https://github.com/LatterFixxx/LatterFix-Smart-contract)
+[![Stellar](https://img.shields.io/badge/Stellar-Soroban%2021-blue.svg)](https://stellar.org)
+[![Tests](https://img.shields.io/badge/Tests-Passing-brightgreen.svg)](https://github.com/LatterFixxx/LatterFix-Smart-contract)
 
 <div align="center">
   <h3>TaskManager Pro — Soroban Smart Contract</h3>
-  <p><i>Escrow-based decentralized task management protocol built on the Stellar Network.</i></p>
+  <p><i>Enterprise-grade decentralized task management protocol with escrow, governance, and reputation system on the Stellar Network.</i></p>
 </div>
 
 ---
 
 ## Overview
 
-This repository contains the Soroban smart contract powering the LatterFix TaskManager Pro platform. The contract implements a complete decentralized escrow workflow — locking task rewards on-chain, routing platform fees, and enabling dispute resolution between task creators and contributors.
+This repository contains the Soroban smart contract powering the LatterFix TaskManager Pro platform. The contract implements a complete decentralized escrow workflow — locking task rewards on-chain, routing platform fees, milestone-based payments, dispute resolution, governance, and a comprehensive reputation system.
 
 ---
 
-## Contract Modules
+## Contract Architecture
 
-| File | Description |
-|------|-------------|
-| `src/lib.rs` | Core escrow contract — task lifecycle, payout logic, fee routing, dispute resolution |
-| `src/user_profile.rs` | Contributor profile manager — on-chain reputation and completion tracking |
-| `src/test.rs` | Comprehensive unit test suite (5 tests, 100% passing) |
+### Module Structure
 
----
-
-## Key Contract Methods
-
-### Task Escrow (`lib.rs`)
-
-*   `initialize(admin, platform_fee_bps, token_contract, fee_recipient)`
-    Bootstrap the contract with admin keys, Stellar token address, and platform fee config.
-*   `create_task(creator, title, description, reward, tags) -> u32`
-    Deposits reward tokens into escrow and registers a new task on-chain.
-*   `assign_task(assignee, task_id)`
-    Claims an open task, transitioning it to `InProgress`.
-*   `submit_work(assignee, task_id, delivery_url)`
-    Submits a delivery URL, advancing the task to `Completed`.
-*   `complete_task(caller, task_id)`
-    Releases escrowed reward to assignee (minus platform fee) and closes the task.
-*   `cancel_task(creator, task_id)`
-    Cancels an open task and refunds the escrowed reward to the creator.
-*   `dispute_task(caller, task_id)`
-    Freezes escrow and moves task into `Disputed` state.
-*   `resolve_dispute(admin, task_id, creator_refund, assignee_payout)`
-    Admin resolves dispute with a custom token split between parties.
-
-### User Profiles (`user_profile.rs`)
-
-*   `create_profile(user, username, bio)`
-    Registers a developer profile on-chain with a starting reputation of 100 points.
-*   `update_bio(user, new_bio)`
-    Updates the contributor's biography on-chain.
-*   `reward_contribution(admin, user, points)`
-    Increments reputation and completed task count after a verified payout.
-*   `get_profile(user) -> Option<UserProfile>`
-    Fetches on-chain contributor profile data.
+| Module | File | Description |
+|--------|------|-------------|
+| **Core** | `lib.rs` | Main contract with task lifecycle, escrow integration, and entry points |
+| **Access Control** | `access_control.rs` | Role-based access control (RBAC) system |
+| **Escrow** | `escrow.rs` | Milestone-based payment escrow management |
+| **Events** | `events.rs` | Standardized event emission for off-chain indexing |
+| **Governance** | `governance.rs` | Proposal and voting system for protocol decisions |
+| **Pausable** | `pausable.rs` | Emergency pause functionality per action type |
+| **Reputation** | `reputation.rs` | User reputation and tier system |
+| **Storage** | `storage.rs` | Storage optimization and TTL management utilities |
+| **User Profile** | `user_profile.rs` | User profiles with reputation tracking |
 
 ---
 
-## Task Status Lifecycle
+## Key Features
 
+### 1. Task Management
+- Create tasks with escrowed rewards
+- Milestone-based task breakdown
+- Task assignment and submission workflow
+- Verification and completion process
+- Cancellation with automatic refunds
+- Dispute resolution by admin
+
+### 2. Escrow System
+- Lock tokens on task creation
+- Milestone-based payments
+- Partial releases per approved milestone
+- Statistics tracking (locked, released, refunded)
+
+### 3. Reputation System
+- Points-based reputation (starting: 100)
+- Tier levels: Newcomer → Contributor → Expert → Master → Legend
+- Points awarded for completed tasks, verified work, milestones
+- Penalties for cancellations and lost disputes
+- Global leaderboard
+
+### 4. Governance
+- Create proposals (requires minimum reputation)
+- Vote on proposals (weight based on reputation)
+- Quorum and threshold requirements
+- Execute passed proposals
+
+### 5. Access Control
+- Role-based permissions (Admin, Manager, Moderator, Verifier)
+- Grant/revoke roles
+- Permission-gated operations
+
+### 6. Pausable
+- Pause/unpause specific actions
+- Emergency circuit breaker
+- Admin-only control
+
+---
+
+## Contract Methods
+
+### Initialization
+
+```rust
+fn initialize(
+    env: Env,
+    admin: Address,
+    platform_fee_bps: u32,    // Platform fee in basis points (max 10%)
+    token_contract: Address,   // Stellar token contract address
+    fee_recipient: Address,    // Address to receive platform fees
+)
 ```
-Open → InProgress → Completed → Verified
-  │         │            │
-  └─────────┴────────────┴──────── Cancelled / Disputed → Resolved
-```
+
+### Task Operations
+
+| Method | Description |
+|--------|-------------|
+| `create_task(creator, title, description, reward, tags)` | Create a new task with escrowed reward |
+| `create_task_with_milestones(creator, title, description, milestones, tags)` | Create task with milestone breakdown |
+| `assign_task(assignee, task_id)` | Claim an open task |
+| `submit_work(assignee, task_id, delivery_url)` | Submit completed work |
+| `complete_task(caller, task_id)` | Approve and release payment |
+| `cancel_task(creator, task_id)` | Cancel and refund |
+| `dispute_task(caller, task_id)` | Raise a dispute |
+| `resolve_dispute(admin, task_id, creator_refund, assignee_payout)` | Admin resolves dispute |
+| `get_task(task_id)` | Get task details |
+
+### Milestone Operations
+
+| Method | Description |
+|--------|-------------|
+| `submit_milestone(assignee, task_id, milestone_id, submission_url)` | Submit milestone work |
+| `approve_milestone(caller, task_id, milestone_id, feedback)` | Approve and release milestone payment |
+| `reject_milestone(caller, task_id, milestone_id, feedback)` | Reject milestone |
+| `get_milestones(task_id)` | Get all milestones for a task |
+
+### Profile Operations
+
+| Method | Description |
+|--------|-------------|
+| `create_profile(user, username, bio)` | Create user profile |
+| `update_bio(user, new_bio)` | Update biography |
+| `get_profile(user)` | Get profile data |
+
+### Reputation Operations
+
+| Method | Description |
+|--------|-------------|
+| `get_user_reputation(user)` | Get reputation points |
+| `get_user_tier(user)` | Get current tier |
+| `get_leaderboard()` | Get top users by reputation |
+
+### Governance Operations
+
+| Method | Description |
+|--------|-------------|
+| `create_proposal(proposer, title, description)` | Create a new proposal |
+| `cast_vote(voter, proposal_id, vote_type)` | Vote on a proposal |
+| `execute_proposal(caller, proposal_id)` | Execute a passed proposal |
+| `get_proposal(proposal_id)` | Get proposal details |
+| `get_active_proposals()` | Get all active proposals |
+
+### Access Control
+
+| Method | Description |
+|--------|-------------|
+| `grant_role(admin, user, role)` | Grant a role to user |
+| `revoke_role(admin, user)` | Revoke user's role |
+| `has_role(user, role)` | Check if user has role |
+
+### Pause Control
+
+| Method | Description |
+|--------|-------------|
+| `pause(admin, action)` | Pause specific action |
+| `unpause(admin, action)` | Unpause specific action |
+| `pause_all(admin)` | Pause all actions |
+| `unpause_all(admin)` | Unpause all actions |
 
 ---
 
 ## Data Structures
+
+### Task
 
 ```rust
 pub struct Task {
@@ -84,8 +173,39 @@ pub struct Task {
     pub status: TaskStatus,
     pub created_by: Address,
     pub tags: Vec<String>,
+    pub category_id: Option<u32>,
+    pub deadline: Option<u64>,
+    pub created_at: u64,
+    pub updated_at: u64,
 }
+```
 
+### Task Status Lifecycle
+
+```
+Open → InProgress → Completed → Verified
+  │         │            │
+  └─────────┴────────────┴──────── Cancelled / Disputed → Resolved
+```
+
+### Milestone
+
+```rust
+pub struct Milestone {
+    pub id: u32,
+    pub task_id: u32,
+    pub title: String,
+    pub amount: i128,
+    pub status: MilestoneStatus,
+    pub due_date: Option<u64>,
+    pub submission_url: Option<String>,
+    pub feedback: Option<String>,
+}
+```
+
+### User Profile
+
+```rust
 pub struct UserProfile {
     pub address: Address,
     pub username: String,
@@ -95,6 +215,34 @@ pub struct UserProfile {
     pub bio: String,
 }
 ```
+
+### Reputation Tiers
+
+| Tier | Points Range |
+|------|--------------|
+| Newcomer | 0 - 99 |
+| Contributor | 100 - 499 |
+| Expert | 500 - 999 |
+| Master | 1000 - 2499 |
+| Legend | 2500+ |
+
+---
+
+## Events
+
+The contract emits standardized events for off-chain indexing:
+
+- `task_created` - New task created
+- `task_assigned` - Task claimed by assignee
+- `task_submitted` - Work submitted
+- `task_completed` - Task verified and paid
+- `task_cancelled` - Task cancelled
+- `task_disputed` - Dispute raised
+- `milestone_*` - Milestone lifecycle events
+- `prop_created` - Governance proposal created
+- `vote_cast` - Vote recorded
+- `role_grant` / `role_revoke` - Role changes
+- `paused` / `unpaused` - Pause state changes
 
 ---
 
@@ -119,22 +267,27 @@ cargo install --locked stellar-cli
 cargo test
 ```
 
-All 5 unit tests cover the complete contract lifecycle:
-- `test_initialization` — Admin setup and config validation
-- `test_create_and_complete_task_flow` — Escrow deposit and verified payout
-- `test_cancel_task_refund` — Creator cancellation and full refund
-- `test_dispute_and_resolution` — Admin-mediated 50/50 dispute split
-- `test_user_profile_lifecycle` — Profile creation, bio update, reputation rewards
-
 ### Build WASM Binary
 
 ```bash
 cargo build --target wasm32-unknown-unknown --release
 ```
 
+### Build Optimized WASM
+
+```bash
+stellar contract build
+```
+
 ### Deploy to Testnet
 
 ```bash
+# Configure testnet
+stellar network add testnet \
+  --rpc-url https://soroban-testnet.stellar.org:443 \
+  --network-passphrase "Test SDF Network ; September 2015"
+
+# Deploy
 stellar contract deploy \
   --wasm target/wasm32-unknown-unknown/release/task_manager_pro.wasm \
   --network testnet \
@@ -142,3 +295,46 @@ stellar contract deploy \
 ```
 
 ---
+
+## Security Considerations
+
+1. **Re-entrancy**: All state changes happen before external calls
+2. **Access Control**: Admin-only functions are protected by `require_auth`
+3. **Overflow Protection**: All arithmetic uses checked operations
+4. **Pause Mechanism**: Emergency stop capability for critical vulnerabilities
+5. **Fee Limits**: Platform fee capped at 10% (1000 basis points)
+
+---
+
+## Gas Optimization
+
+- Storage keys use minimal byte representation
+- TTL management prevents storage churn
+- Instance storage for frequently accessed data
+- Persistent storage for user profiles and historical data
+
+---
+
+## License
+
+MIT License - See [LICENSE](LICENSE) file for details.
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Run tests: `cargo test`
+4. Submit a pull request
+
+---
+
+## Support
+
+- **Issues**: [GitHub Issues](https://github.com/LatterFixxx/LatterFix-Smart-contract/issues)
+- **Discord**: [LatterFix Community](https://discord.gg/latterfix)
+
+---
+
+**Built with ❤️ on Stellar/Soroban**
