@@ -283,4 +283,20 @@ impl TaskManagerContract {
         task.status = TaskStatus::Resolved;
         env.storage().instance().set(&DataKey::Task(task_id), &task);
     }
+
+    pub fn create_profile(env: Env, user: Address, username: String, bio: String) {
+        user_profile::create_profile(env, user, username, bio);
+    }
+
+    pub fn update_bio(env: Env, user: Address, new_bio: String) {
+        user_profile::update_bio(env, user, new_bio);
+    }
+
+    pub fn reward_contribution(env: Env, admin: Address, user: Address, points: u32) {
+        user_profile::reward_contribution(env, admin, user, points);
+    }
+
+    pub fn get_profile(env: Env, user: Address) -> Option<user_profile::UserProfile> {
+        user_profile::get_profile(env, user)
+    }
 }

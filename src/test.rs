@@ -1,8 +1,9 @@
 #![cfg(test)]
 
 use crate::{TaskManagerContract, TaskManagerContractClient, TaskStatus};
-use crate::user_profile::UserProfile;
-use soroban_sdk::{token::StellarAssetContractClient, Address, Env, String, Vec};
+use soroban_sdk::testutils::Address as _;
+use soroban_sdk::token::StellarAssetClient;
+use soroban_sdk::{Address, Env, String, Vec};
 
 #[test]
 fn test_initialization() {
@@ -43,7 +44,7 @@ fn test_create_and_complete_task_flow() {
     let assignee = Address::generate(&env);
 
     // Mint tokens to creator
-    let token_admin_client = StellarAssetContractClient::new(&env, &token_contract);
+    let token_admin_client = StellarAssetClient::new(&env, &token_contract);
     token_admin_client.mint(&creator, &1000);
 
     let token_client = soroban_sdk::token::Client::new(&env, &token_contract);
@@ -94,7 +95,7 @@ fn test_cancel_task_refund() {
     let creator = Address::generate(&env);
 
     // Mint tokens to creator
-    let token_admin_client = StellarAssetContractClient::new(&env, &token_contract);
+    let token_admin_client = StellarAssetClient::new(&env, &token_contract);
     token_admin_client.mint(&creator, &500);
 
     let title = String::from_str(&env, "Cancel Task");
@@ -130,7 +131,7 @@ fn test_dispute_and_resolution() {
     let assignee = Address::generate(&env);
 
     // Mint tokens to creator
-    let token_admin_client = StellarAssetContractClient::new(&env, &token_contract);
+    let token_admin_client = StellarAssetClient::new(&env, &token_contract);
     token_admin_client.mint(&creator, &1000);
 
     let title = String::from_str(&env, "Dispute Task");
