@@ -1,5 +1,0 @@
-severity_mapping:
-  info: low
-  warning: medium
-  error: high
-  blocker: critical

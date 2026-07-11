@@ -1,39 +1,17 @@
-[workspace]
-members = [
-    "tooling/sanctifier-core",
-    "tooling/sanctifier-cli",
-    "tooling/sanctifier-detector",
-    "tooling/sanctifier-wasm",
-    "contracts/test-support",
-    "contracts/security-disclaimers",
-    "contracts/vulnerable-contract",
-    "contracts/token-with-bugs",
-    "contracts/amm-pool",
-    "contracts/governance",
-    "contracts/multisig",
-    "contracts/timelock",
-    "contracts/reentrancy-guard",
-    "contracts/runtime-guard-wrapper",
-    "contracts/kani-poc",
-    "contracts/my-contract",
-    "contracts/flashloan-token",
-    "contracts/proxy",
-    "contracts/vesting",
-    "contracts/benchmark",
-    "contracts/deposit-withdraw",
+[package]
+name = "latterfix-smart-contract"
+version = "0.1.0"
+edition = "2021"
 
-]
-resolver = "2"
+[lib]
+name = "task_manager_pro"
+crate-type = ["cdylib", "rlib"]
 
-[workspace.dependencies]
-soroban-sdk = { version = "21.7.0" }
-sanctifier-test-support = { path = "contracts/test-support" }
+[dependencies]
+soroban-sdk = "21.7.0"
 
-[workspace.package]
-rust-version = "1.78"
-
-[workspace.lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+[dev-dependencies]
+soroban-sdk = { version = "21.7.0", features = ["testutils"] }
 
 [profile.release]
 opt-level = "z"
@@ -44,7 +22,3 @@ debug-assertions = false
 panic = "abort"
 lto = true
 codegen-units = 1
-
-[profile.release-with-logs]
-inherits = "release"
-debug-assertions = true
