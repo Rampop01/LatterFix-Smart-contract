@@ -1,3 +1,0 @@
-[profile.ci]
-# Output JUnit XML for native CI tab integration (GitHub, GitLab, CircleCI)
-junit = { path = "junit.xml" }
