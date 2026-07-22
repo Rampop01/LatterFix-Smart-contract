@@ -49,7 +49,7 @@ pub fn calculate_ttl(_env: &Env, is_permanent: bool) -> u32 {
 /// * `key`       — the storage key to extend
 /// * `threshold` — minimum remaining ledgers before extension triggers
 /// * `extend_to` — target TTL to extend to (in ledgers)
-pub fn extend_persistent_ttl<K: soroban_sdk::Val + soroban_sdk::TryFromVal<Env, soroban_sdk::Val>>(
+pub fn extend_persistent_ttl<K>(
     env: &Env,
     key: &K,
     threshold: u32,
