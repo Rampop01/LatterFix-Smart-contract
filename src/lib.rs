@@ -7,10 +7,13 @@ pub mod governance;
 pub mod pausable;
 pub mod reputation;
 pub mod storage;
+pub mod swap_router;
 pub mod user_profile;
 
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod swap_router_test;
 
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Vec};
 
@@ -775,9 +778,87 @@ impl TaskManagerContract {
     }
 
     // ========================================================================
+    // Multi-Asset Swap Router
+    // ========================================================================
+
+    pub fn configure_swap_router(
+        env: Env,
+        admin: Address,
+        oracle: Address,
+        max_hops: u32,
+        default_slippage_bps: u32,
+    ) {
+        swap_router::configure(env.clone(), admin.clone(), oracle.clone(), max_hops, default_slippage_bps);
+        events::emit_router_configured(&env, admin, oracle, max_hops, default_slippage_bps);
+    }
+
+    pub fn add_approved_stablecoin(env: Env, admin: Address, stablecoin: Address) {
+        swap_router::add_approved_stablecoin(env.clone(), admin.clone(), stablecoin.clone());
+        events::emit_stablecoin_approved(&env, admin, stablecoin);
+    }
+
+    pub fn remove_approved_stablecoin(env: Env, admin: Address, stablecoin: Address) {
+        swap_router::remove_approved_stablecoin(env.clone(), admin.clone(), stablecoin.clone());
+        events::emit_stablecoin_removed(&env, admin, stablecoin);
+    }
+
+    pub fn get_approved_stablecoins(env: Env) -> Vec<Address> {
+        swap_router::get_approved_stablecoins(env)
+    }
+
+    pub fn get_swap_router_config(env: Env) -> swap_router::RouterConfig {
+        swap_router::get_config(env)
+    }
+
+    /// Convert an incoming non-standard SAC token into an approved vault
+    /// stablecoin via a (possibly multi-hop) DEX route, guarded by an
+    /// oracle-derived minimum-return check. Refunds (rejects without pulling
+    /// funds) if the route can't be resolved or has no oracle price.
+    pub fn convert_incoming_deposit(
+        env: Env,
+        sender: Address,
+        token_in: Address,
+        amount_in: i128,
+        route: swap_router::SwapRoute,
+        slippage_bps: Option<u32>,
+    ) -> swap_router::ConversionOutcome {
+        let outcome = swap_router::convert_incoming_deposit(
+            env.clone(),
+            sender.clone(),
+            token_in.clone(),
+            amount_in,
+            route,
+            slippage_bps,
+        );
+
+        match &outcome {
+            swap_router::ConversionOutcome::Converted(token_out, amount_out) => {
+                events::emit_swap_executed(&env, sender, token_in, token_out.clone(), amount_in, *amount_out);
+            }
+            swap_router::ConversionOutcome::Refunded(reason) => {
+                events::emit_swap_refunded(&env, sender, token_in, amount_in, reason.clone());
+            }
+        }
+
+        outcome
+    }
+
+    pub fn get_vault_balance(env: Env, owner: Address, stablecoin: Address) -> i128 {
+        swap_router::get_vault_balance(env, owner, stablecoin)
+    }
+
+    pub fn withdraw_stablecoin(env: Env, owner: Address, stablecoin: Address, amount: i128) {
+        swap_router::withdraw_stablecoin(env, owner, stablecoin, amount);
+    }
+
+    pub fn get_swap_router_stats(env: Env) -> swap_router::SwapRouterStats {
+        swap_router::get_stats(env)
+    }
+
+    // ========================================================================
     // Statistics & Views
     // ========================================================================
-    
+
     pub fn get_task(env: Env, task_id: u32) -> Option<Task> {
         env.storage().instance().get(&DataKey::Task(task_id))
     }

@@ -324,3 +324,64 @@ pub fn emit_contract_initialized(
         (fee_bps, env.ledger().timestamp()),
     );
 }
+
+// ── Swap Router Events ─────────────────────────────────────────────────────
+
+/// Emitted when the multi-asset swap router config is set/updated.
+pub fn emit_router_configured(
+    env: &Env,
+    admin: Address,
+    oracle: Address,
+    max_hops: u32,
+    default_slippage_bps: u32,
+) {
+    env.events().publish(
+        (symbol_short!("rtr_cfg"), admin),
+        (oracle, max_hops, default_slippage_bps, env.ledger().timestamp()),
+    );
+}
+
+pub fn emit_stablecoin_approved(env: &Env, admin: Address, stablecoin: Address) {
+    env.events().publish(
+        (symbol_short!("stbl_add"), admin),
+        (stablecoin, env.ledger().timestamp()),
+    );
+}
+
+pub fn emit_stablecoin_removed(env: &Env, admin: Address, stablecoin: Address) {
+    env.events().publish(
+        (symbol_short!("stbl_rem"), admin),
+        (stablecoin, env.ledger().timestamp()),
+    );
+}
+
+/// Emitted when an incoming non-standard token is successfully routed and
+/// converted into an approved vault stablecoin.
+pub fn emit_swap_executed(
+    env: &Env,
+    sender: Address,
+    token_in: Address,
+    token_out: Address,
+    amount_in: i128,
+    amount_out: i128,
+) {
+    env.events().publish(
+        (symbol_short!("swap_exec"), sender),
+        (token_in, token_out, amount_in, amount_out, env.ledger().timestamp()),
+    );
+}
+
+/// Emitted when a conversion is rejected before any funds are pulled from the
+/// sender, e.g. because the route couldn't be resolved or has no oracle price.
+pub fn emit_swap_refunded(
+    env: &Env,
+    sender: Address,
+    token_in: Address,
+    amount: i128,
+    reason: String,
+) {
+    env.events().publish(
+        (symbol_short!("swap_ref"), sender),
+        (token_in, amount, reason, env.ledger().timestamp()),
+    );
+}
