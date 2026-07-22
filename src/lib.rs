@@ -241,7 +241,7 @@ impl TaskManagerContract {
                 env.clone(),
                 task_id,
                 milestone_title.clone(),
-                *amount,
+                amount,
                 None,
             );
         }
