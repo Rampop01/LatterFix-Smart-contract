@@ -933,7 +933,7 @@ impl TaskManagerContract {
         events::emit_vault_claim(&env, claimant, token, amount);
     }
 
-    pub fn get_vault_balance(env: Env, token: Address) -> i128 {
+    pub fn get_token_vault_balance(env: Env, token: Address) -> i128 {
         vault::get_vault_balance(&env, token)
     }
 

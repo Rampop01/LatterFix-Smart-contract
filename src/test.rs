@@ -322,8 +322,8 @@ fn test_multi_stablecoin_vault_separate_ledgers() {
     client.deposit_to_vault(&employer, &eurt, &500);
 
     // Ledgers must not mix across token types
-    assert_eq!(client.get_vault_balance(&usdc), 1000);
-    assert_eq!(client.get_vault_balance(&eurt), 500);
+    assert_eq!(client.get_token_vault_balance(&usdc), 1000);
+    assert_eq!(client.get_token_vault_balance(&eurt), 500);
     assert_eq!(client.get_depositor_vault_balance(&employer, &usdc), 1000);
     assert_eq!(client.get_depositor_vault_balance(&employer, &eurt), 500);
 
@@ -361,8 +361,8 @@ fn test_vault_claim_reduces_correct_token_only() {
 
     assert_eq!(client.get_depositor_vault_balance(&worker, &usdc), 0);
     assert_eq!(client.get_depositor_vault_balance(&worker, &eurt), 200, "EURT balance must be untouched by a USDC claim");
-    assert_eq!(client.get_vault_balance(&usdc), 0);
-    assert_eq!(client.get_vault_balance(&eurt), 200);
+    assert_eq!(client.get_token_vault_balance(&usdc), 0);
+    assert_eq!(client.get_token_vault_balance(&eurt), 200);
 
     let usdc_token = soroban_sdk::token::Client::new(&env, &usdc);
     assert_eq!(usdc_token.balance(&worker), 300, "worker received the claimed USDC back");
