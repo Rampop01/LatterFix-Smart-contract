@@ -294,3 +294,140 @@ fn test_cannot_double_assign() {
     let result = client.try_assign_task(&a2, &task_id);
     assert!(result.is_err(), "double-assigning a task should be rejected");
 }
+
+// ── Test 9: Deposits into different tokens are tracked on separate ledgers ─
+
+#[test]
+fn test_multi_stablecoin_vault_separate_ledgers() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, contract_id, admin, _, _) = setup_initialized_contract(&env, 100);
+
+    let usdc_admin = Address::generate(&env);
+    let usdc = env.register_stellar_asset_contract(usdc_admin);
+    let eurt_admin = Address::generate(&env);
+    let eurt = env.register_stellar_asset_contract(eurt_admin);
+
+    client.add_supported_token(&admin, &usdc);
+    client.add_supported_token(&admin, &eurt);
+    assert!(client.is_token_supported(&usdc));
+    assert!(client.is_token_supported(&eurt));
+
+    let employer = Address::generate(&env);
+    StellarAssetClient::new(&env, &usdc).mint(&employer, &1000);
+    StellarAssetClient::new(&env, &eurt).mint(&employer, &500);
+
+    client.deposit_to_vault(&employer, &usdc, &1000);
+    client.deposit_to_vault(&employer, &eurt, &500);
+
+    // Ledgers must not mix across token types
+    assert_eq!(client.get_vault_balance(&usdc), 1000);
+    assert_eq!(client.get_vault_balance(&eurt), 500);
+    assert_eq!(client.get_depositor_vault_balance(&employer, &usdc), 1000);
+    assert_eq!(client.get_depositor_vault_balance(&employer, &eurt), 500);
+
+    let usdc_token = soroban_sdk::token::Client::new(&env, &usdc);
+    let eurt_token = soroban_sdk::token::Client::new(&env, &eurt);
+    assert_eq!(usdc_token.balance(&contract_id), 1000);
+    assert_eq!(eurt_token.balance(&contract_id), 500);
+}
+
+// ── Test 10: Claiming draws down only the claimed token's ledger ──────────
+
+#[test]
+fn test_vault_claim_reduces_correct_token_only() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, admin, _, _) = setup_initialized_contract(&env, 100);
+
+    let usdc_admin = Address::generate(&env);
+    let usdc = env.register_stellar_asset_contract(usdc_admin);
+    let eurt_admin = Address::generate(&env);
+    let eurt = env.register_stellar_asset_contract(eurt_admin);
+
+    client.add_supported_token(&admin, &usdc);
+    client.add_supported_token(&admin, &eurt);
+
+    let worker = Address::generate(&env);
+    StellarAssetClient::new(&env, &usdc).mint(&worker, &300);
+    StellarAssetClient::new(&env, &eurt).mint(&worker, &200);
+
+    client.deposit_to_vault(&worker, &usdc, &300);
+    client.deposit_to_vault(&worker, &eurt, &200);
+
+    client.claim_from_vault(&worker, &usdc, &300);
+
+    assert_eq!(client.get_depositor_vault_balance(&worker, &usdc), 0);
+    assert_eq!(client.get_depositor_vault_balance(&worker, &eurt), 200, "EURT balance must be untouched by a USDC claim");
+    assert_eq!(client.get_vault_balance(&usdc), 0);
+    assert_eq!(client.get_vault_balance(&eurt), 200);
+
+    let usdc_token = soroban_sdk::token::Client::new(&env, &usdc);
+    assert_eq!(usdc_token.balance(&worker), 300, "worker received the claimed USDC back");
+}
+
+// ── Test 11: Deposit rejected for a token that isn't registered ──────────
+
+#[test]
+fn test_vault_deposit_rejects_unsupported_token() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, _, _, _) = setup_initialized_contract(&env, 100);
+
+    let orgusd_admin = Address::generate(&env);
+    let orgusd = env.register_stellar_asset_contract(orgusd_admin);
+
+    let depositor = Address::generate(&env);
+    StellarAssetClient::new(&env, &orgusd).mint(&depositor, &100);
+
+    // ORGUSD was never added via add_supported_token
+    let result = client.try_deposit_to_vault(&depositor, &orgusd, &100);
+    assert!(result.is_err(), "depositing an unsupported token must be rejected");
+}
+
+// ── Test 12: Claim beyond depositor's balance is rejected ────────────────
+
+#[test]
+fn test_vault_claim_rejects_insufficient_balance() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, admin, _, _) = setup_initialized_contract(&env, 100);
+
+    let usdc_admin = Address::generate(&env);
+    let usdc = env.register_stellar_asset_contract(usdc_admin);
+    client.add_supported_token(&admin, &usdc);
+
+    let depositor = Address::generate(&env);
+    StellarAssetClient::new(&env, &usdc).mint(&depositor, &50);
+    client.deposit_to_vault(&depositor, &usdc, &50);
+
+    let result = client.try_claim_from_vault(&depositor, &usdc, &51);
+    assert!(result.is_err(), "claiming more than the deposited balance must be rejected");
+}
+
+// ── Test 13: Removing a supported token blocks further deposits ──────────
+
+#[test]
+fn test_vault_removed_token_blocks_new_deposits() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, admin, _, _) = setup_initialized_contract(&env, 100);
+
+    let usdc_admin = Address::generate(&env);
+    let usdc = env.register_stellar_asset_contract(usdc_admin);
+    client.add_supported_token(&admin, &usdc);
+    assert!(client.is_token_supported(&usdc));
+
+    client.remove_supported_token(&admin, &usdc);
+    assert!(!client.is_token_supported(&usdc));
+
+    let depositor = Address::generate(&env);
+    StellarAssetClient::new(&env, &usdc).mint(&depositor, &10);
+    let result = client.try_deposit_to_vault(&depositor, &usdc, &10);
+    assert!(result.is_err(), "deposits must be rejected after a token is removed");
+}
