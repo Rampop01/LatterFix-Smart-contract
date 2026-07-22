@@ -3,3 +3,4 @@ Cargo.lock.gdoc
 
 # Test ledger snapshots (local only — keep repo light)
 test_snapshots/
+docs/
