@@ -10,6 +10,7 @@ pub mod storage;
 pub mod swap_router;
 pub mod user_profile;
 pub mod vault;
+pub mod merkle;
 
 #[cfg(test)]
 mod test;
@@ -939,6 +940,38 @@ impl TaskManagerContract {
 
     pub fn get_depositor_vault_balance(env: Env, depositor: Address, token: Address) -> i128 {
         vault::get_depositor_balance(&env, depositor, token)
+    }
+
+    // ========================================================================
+    // Merkle Payroll (Vault)
+    // ========================================================================
+
+    pub fn set_payroll_root(env: Env, admin: Address, payroll_id: u32, root: soroban_sdk::BytesN<32>) {
+        admin.require_auth();
+        
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+            
+        if admin != stored_admin {
+            panic!("only admin can set payroll root");
+        }
+        
+        vault::set_payroll_root(&env, payroll_id, root);
+    }
+
+    pub fn claim_payroll(
+        env: Env,
+        claimant: Address,
+        token: Address,
+        payroll_id: u32,
+        amount: i128,
+        proof: Vec<soroban_sdk::BytesN<32>>,
+    ) {
+        claimant.require_auth();
+        vault::claim_payroll(&env, claimant, token, payroll_id, amount, proof);
     }
 }
 

@@ -431,3 +431,66 @@ fn test_vault_removed_token_blocks_new_deposits() {
     let result = client.try_deposit_to_vault(&depositor, &usdc, &10);
     assert!(result.is_err(), "deposits must be rejected after a token is removed");
 }
+
+// ── Test: Merkle Payroll ───────────────────────────────────────────────────
+
+use soroban_sdk::xdr::ToXdr;
+use soroban_sdk::{Bytes, BytesN};
+
+#[test]
+fn test_merkle_payroll_claim() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, contract_id, admin, token_contract, _) =
+        setup_initialized_contract(&env, 100);
+
+    let token_admin_client = soroban_sdk::token::StellarAssetClient::new(&env, &token_contract);
+    let token_client = soroban_sdk::token::Client::new(&env, &token_contract);
+    
+    let claimant1 = Address::generate(&env);
+    let claimant2 = Address::generate(&env);
+    let amount1: i128 = 1000;
+    let amount2: i128 = 2000;
+
+    let depositor = Address::generate(&env);
+    token_admin_client.mint(&depositor, &5000);
+    
+    client.add_supported_token(&admin, &token_contract);
+    client.deposit_to_vault(&depositor, &token_contract, &5000);
+
+    let leaf1_data = (claimant1.clone(), token_contract.clone(), amount1).to_xdr(&env);
+    let leaf1: BytesN<32> = env.crypto().sha256(&leaf1_data).into();
+
+    let leaf2_data = (claimant2.clone(), token_contract.clone(), amount2).to_xdr(&env);
+    let leaf2: BytesN<32> = env.crypto().sha256(&leaf2_data).into();
+
+    let mut root_data = Bytes::new(&env);
+    if leaf1 <= leaf2 {
+        root_data.append(&leaf1.clone().into());
+        root_data.append(&leaf2.clone().into());
+    } else {
+        root_data.append(&leaf2.clone().into());
+        root_data.append(&leaf1.clone().into());
+    }
+    let root: BytesN<32> = env.crypto().sha256(&root_data).into();
+
+    let payroll_id = 1u32;
+    client.set_payroll_root(&admin, &payroll_id, &root);
+
+    let mut proof1 = Vec::new(&env);
+    proof1.push_back(leaf2.clone());
+
+    client.claim_payroll(&claimant1, &token_contract, &payroll_id, &amount1, &proof1);
+
+    assert_eq!(token_client.balance(&claimant1), amount1);
+
+    let res = client.try_claim_payroll(&claimant1, &token_contract, &payroll_id, &amount1, &proof1);
+    assert!(res.is_err(), "double claiming should fail");
+
+    let forged_amount = 3000;
+    let mut bogus_proof = Vec::new(&env);
+    bogus_proof.push_back(leaf1.clone());
+    let res2 = client.try_claim_payroll(&claimant2, &token_contract, &payroll_id, &forged_amount, &bogus_proof);
+    assert!(res2.is_err(), "forged claim should fail");
+}
