@@ -7,6 +7,7 @@ pub mod governance;
 pub mod pausable;
 pub mod reputation;
 pub mod storage;
+pub mod twap_oracle;
 pub mod user_profile;
 
 #[cfg(test)]
