@@ -8,10 +8,15 @@ pub mod pausable;
 pub mod reputation;
 pub mod storage;
 pub mod twap_oracle;
+pub mod swap_router;
 pub mod user_profile;
+pub mod vault;
+pub mod merkle;
 
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod swap_router_test;
 
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Vec};
 
@@ -242,7 +247,7 @@ impl TaskManagerContract {
                 env.clone(),
                 task_id,
                 milestone_title.clone(),
-                *amount,
+                amount,
                 None,
             );
         }
@@ -776,9 +781,87 @@ impl TaskManagerContract {
     }
 
     // ========================================================================
+    // Multi-Asset Swap Router
+    // ========================================================================
+
+    pub fn configure_swap_router(
+        env: Env,
+        admin: Address,
+        oracle: Address,
+        max_hops: u32,
+        default_slippage_bps: u32,
+    ) {
+        swap_router::configure(env.clone(), admin.clone(), oracle.clone(), max_hops, default_slippage_bps);
+        events::emit_router_configured(&env, admin, oracle, max_hops, default_slippage_bps);
+    }
+
+    pub fn add_approved_stablecoin(env: Env, admin: Address, stablecoin: Address) {
+        swap_router::add_approved_stablecoin(env.clone(), admin.clone(), stablecoin.clone());
+        events::emit_stablecoin_approved(&env, admin, stablecoin);
+    }
+
+    pub fn remove_approved_stablecoin(env: Env, admin: Address, stablecoin: Address) {
+        swap_router::remove_approved_stablecoin(env.clone(), admin.clone(), stablecoin.clone());
+        events::emit_stablecoin_removed(&env, admin, stablecoin);
+    }
+
+    pub fn get_approved_stablecoins(env: Env) -> Vec<Address> {
+        swap_router::get_approved_stablecoins(env)
+    }
+
+    pub fn get_swap_router_config(env: Env) -> swap_router::RouterConfig {
+        swap_router::get_config(env)
+    }
+
+    /// Convert an incoming non-standard SAC token into an approved vault
+    /// stablecoin via a (possibly multi-hop) DEX route, guarded by an
+    /// oracle-derived minimum-return check. Refunds (rejects without pulling
+    /// funds) if the route can't be resolved or has no oracle price.
+    pub fn convert_incoming_deposit(
+        env: Env,
+        sender: Address,
+        token_in: Address,
+        amount_in: i128,
+        route: swap_router::SwapRoute,
+        slippage_bps: Option<u32>,
+    ) -> swap_router::ConversionOutcome {
+        let outcome = swap_router::convert_incoming_deposit(
+            env.clone(),
+            sender.clone(),
+            token_in.clone(),
+            amount_in,
+            route,
+            slippage_bps,
+        );
+
+        match &outcome {
+            swap_router::ConversionOutcome::Converted(token_out, amount_out) => {
+                events::emit_swap_executed(&env, sender, token_in, token_out.clone(), amount_in, *amount_out);
+            }
+            swap_router::ConversionOutcome::Refunded(reason) => {
+                events::emit_swap_refunded(&env, sender, token_in, amount_in, reason.clone());
+            }
+        }
+
+        outcome
+    }
+
+    pub fn get_vault_balance(env: Env, owner: Address, stablecoin: Address) -> i128 {
+        swap_router::get_vault_balance(env, owner, stablecoin)
+    }
+
+    pub fn withdraw_stablecoin(env: Env, owner: Address, stablecoin: Address, amount: i128) {
+        swap_router::withdraw_stablecoin(env, owner, stablecoin, amount);
+    }
+
+    pub fn get_swap_router_stats(env: Env) -> swap_router::SwapRouterStats {
+        swap_router::get_stats(env)
+    }
+
+    // ========================================================================
     // Statistics & Views
     // ========================================================================
-    
+
     pub fn get_task(env: Env, task_id: u32) -> Option<Task> {
         env.storage().instance().get(&DataKey::Task(task_id))
     }
@@ -789,6 +872,107 @@ impl TaskManagerContract {
     
     pub fn get_statistics(env: Env) -> storage::ContractStatistics {
         storage::get_statistics(&env)
+    }
+
+    // ========================================================================
+    // Multi-Stablecoin Vault
+    // ========================================================================
+
+    /// Register a SAC token address as an accepted vault currency. Admin only.
+    pub fn add_supported_token(env: Env, admin: Address, token: Address) {
+        admin.require_auth();
+
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+        if admin != stored_admin {
+            panic!("only admin can add supported tokens");
+        }
+
+        vault::add_supported_token(&env, token.clone());
+        events::emit_token_supported(&env, token, admin);
+    }
+
+    /// Deregister a SAC token address from the accepted vault currencies. Admin only.
+    pub fn remove_supported_token(env: Env, admin: Address, token: Address) {
+        admin.require_auth();
+
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+        if admin != stored_admin {
+            panic!("only admin can remove supported tokens");
+        }
+
+        vault::remove_supported_token(&env, token.clone());
+        events::emit_token_unsupported(&env, token, admin);
+    }
+
+    pub fn is_token_supported(env: Env, token: Address) -> bool {
+        vault::is_supported_token(&env, &token)
+    }
+
+    pub fn get_supported_tokens(env: Env) -> Vec<Address> {
+        vault::get_supported_tokens(&env)
+    }
+
+    /// Deposit `amount` of `token` into the vault. Token must already be supported.
+    pub fn deposit_to_vault(env: Env, depositor: Address, token: Address, amount: i128) {
+        depositor.require_auth();
+        vault::deposit(&env, depositor.clone(), token.clone(), amount);
+        events::emit_vault_deposit(&env, depositor, token, amount);
+    }
+
+    /// Claim `amount` of `token` out of the vault, drawing down the caller's
+    /// depositor balance for that specific token.
+    pub fn claim_from_vault(env: Env, claimant: Address, token: Address, amount: i128) {
+        claimant.require_auth();
+        vault::claim(&env, claimant.clone(), token.clone(), amount);
+        events::emit_vault_claim(&env, claimant, token, amount);
+    }
+
+    pub fn get_token_vault_balance(env: Env, token: Address) -> i128 {
+        vault::get_vault_balance(&env, token)
+    }
+
+    pub fn get_depositor_vault_balance(env: Env, depositor: Address, token: Address) -> i128 {
+        vault::get_depositor_balance(&env, depositor, token)
+    }
+
+    // ========================================================================
+    // Merkle Payroll (Vault)
+    // ========================================================================
+
+    pub fn set_payroll_root(env: Env, admin: Address, payroll_id: u32, root: soroban_sdk::BytesN<32>) {
+        admin.require_auth();
+        
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+            
+        if admin != stored_admin {
+            panic!("only admin can set payroll root");
+        }
+        
+        vault::set_payroll_root(&env, payroll_id, root);
+    }
+
+    pub fn claim_payroll(
+        env: Env,
+        claimant: Address,
+        token: Address,
+        payroll_id: u32,
+        amount: i128,
+        proof: Vec<soroban_sdk::BytesN<32>>,
+    ) {
+        claimant.require_auth();
+        vault::claim_payroll(&env, claimant, token, payroll_id, amount, proof);
     }
 }
 
