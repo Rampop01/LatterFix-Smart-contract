@@ -310,6 +310,30 @@ stellar contract deploy \
   --source <your-account>
 ```
 
+### Running the TTL Monitoring Bot
+
+The repository includes an automated background bot (`tooling/ttl_bot.py`) to track contract storage TTL and send bump transactions before expiration.
+
+**1. Install Dependencies**
+```bash
+pip install stellar-sdk>=9.0.0 requests
+```
+
+**2. Run the Bot**
+```bash
+python3 tooling/ttl_bot.py \
+  --secret-key "<YOUR_SECRET_KEY>" \
+  --contract-ids "<CONTRACT_ID_1>,<CONTRACT_ID_2>" \
+  --interval 3600
+```
+
+**Bot Options:**
+- `--dry-run`: Run without actually sending transactions.
+- `--threshold`: TTL threshold in ledgers to trigger renewal (default: `10000`).
+- `--extend-to`: Number of ledgers to extend the TTL to (default: `50000`).
+- `--min-balance`: Minimum XLM balance for the bot wallet before alerting (default: `10.0`).
+- `--interval`: Run continuously every N seconds (default: `0`, which means run once and exit).
+
 ---
 
 ## Security Considerations
