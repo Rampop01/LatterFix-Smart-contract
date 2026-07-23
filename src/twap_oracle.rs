@@ -289,7 +289,7 @@ pub fn calculate_twap(
         .unwrap_or_else(|| Vec::new(&env));
 
     // Check if we have sufficient observations
-    if all_observations.len() < config.min_observation_count as usize {
+    if all_observations.len() < config.min_observation_count {
         // Fall back to secondary oracle if available
         if config.secondary_oracle.is_some() {
             return calculate_twap_fallback(env, asset_pair, config);
@@ -311,7 +311,7 @@ pub fn calculate_twap(
     }
 
     // Verify we still have enough observations
-    if window_observations.len() < config.min_observation_count as usize {
+    if window_observations.len() < config.min_observation_count {
         // Fall back to secondary oracle
         if config.secondary_oracle.is_some() {
             return calculate_twap_fallback(env, asset_pair, config);
