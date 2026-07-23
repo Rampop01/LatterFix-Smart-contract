@@ -385,3 +385,33 @@ pub fn emit_swap_refunded(
         (token_in, amount, reason, env.ledger().timestamp()),
     );
 }
+
+// ── Vault Events ───────────────────────────────────────────────────────────
+
+pub fn emit_token_supported(env: &Env, token: Address, admin: Address) {
+    env.events().publish(
+        (symbol_short!("tok_add"), token),
+        (admin, env.ledger().timestamp()),
+    );
+}
+
+pub fn emit_token_unsupported(env: &Env, token: Address, admin: Address) {
+    env.events().publish(
+        (symbol_short!("tok_rem"), token),
+        (admin, env.ledger().timestamp()),
+    );
+}
+
+pub fn emit_vault_deposit(env: &Env, depositor: Address, token: Address, amount: i128) {
+    env.events().publish(
+        (symbol_short!("vlt_dep"), token),
+        (depositor, amount, env.ledger().timestamp()),
+    );
+}
+
+pub fn emit_vault_claim(env: &Env, claimant: Address, token: Address, amount: i128) {
+    env.events().publish(
+        (symbol_short!("vlt_clm"), token),
+        (claimant, amount, env.ledger().timestamp()),
+    );
+}

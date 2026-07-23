@@ -9,6 +9,7 @@ pub mod reputation;
 pub mod storage;
 pub mod swap_router;
 pub mod user_profile;
+pub mod vault;
 
 #[cfg(test)]
 mod test;
@@ -869,6 +870,75 @@ impl TaskManagerContract {
     
     pub fn get_statistics(env: Env) -> storage::ContractStatistics {
         storage::get_statistics(&env)
+    }
+
+    // ========================================================================
+    // Multi-Stablecoin Vault
+    // ========================================================================
+
+    /// Register a SAC token address as an accepted vault currency. Admin only.
+    pub fn add_supported_token(env: Env, admin: Address, token: Address) {
+        admin.require_auth();
+
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+        if admin != stored_admin {
+            panic!("only admin can add supported tokens");
+        }
+
+        vault::add_supported_token(&env, token.clone());
+        events::emit_token_supported(&env, token, admin);
+    }
+
+    /// Deregister a SAC token address from the accepted vault currencies. Admin only.
+    pub fn remove_supported_token(env: Env, admin: Address, token: Address) {
+        admin.require_auth();
+
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+        if admin != stored_admin {
+            panic!("only admin can remove supported tokens");
+        }
+
+        vault::remove_supported_token(&env, token.clone());
+        events::emit_token_unsupported(&env, token, admin);
+    }
+
+    pub fn is_token_supported(env: Env, token: Address) -> bool {
+        vault::is_supported_token(&env, &token)
+    }
+
+    pub fn get_supported_tokens(env: Env) -> Vec<Address> {
+        vault::get_supported_tokens(&env)
+    }
+
+    /// Deposit `amount` of `token` into the vault. Token must already be supported.
+    pub fn deposit_to_vault(env: Env, depositor: Address, token: Address, amount: i128) {
+        depositor.require_auth();
+        vault::deposit(&env, depositor.clone(), token.clone(), amount);
+        events::emit_vault_deposit(&env, depositor, token, amount);
+    }
+
+    /// Claim `amount` of `token` out of the vault, drawing down the caller's
+    /// depositor balance for that specific token.
+    pub fn claim_from_vault(env: Env, claimant: Address, token: Address, amount: i128) {
+        claimant.require_auth();
+        vault::claim(&env, claimant.clone(), token.clone(), amount);
+        events::emit_vault_claim(&env, claimant, token, amount);
+    }
+
+    pub fn get_token_vault_balance(env: Env, token: Address) -> i128 {
+        vault::get_vault_balance(&env, token)
+    }
+
+    pub fn get_depositor_vault_balance(env: Env, depositor: Address, token: Address) -> i128 {
+        vault::get_depositor_balance(&env, depositor, token)
     }
 }
 
