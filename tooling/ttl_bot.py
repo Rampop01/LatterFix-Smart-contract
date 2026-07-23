@@ -16,17 +16,18 @@ import argparse
 import logging
 import time
 import sys
-import requests
 
 try:
+    import requests
     from stellar_sdk import (
         Keypair,
         Network,
         Server
     )
     from stellar_sdk.exceptions import BaseHorizonError
-except ImportError:
-    print("Please install stellar-sdk: pip install stellar-sdk>=9.0.0")
+except ImportError as e:
+    print(f"Missing dependency: {e}")
+    print("Please install required dependencies: pip install stellar-sdk>=9.0.0 requests")
     sys.exit(1)
 
 # Configure logging
