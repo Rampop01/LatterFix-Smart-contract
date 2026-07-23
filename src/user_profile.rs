@@ -1,6 +1,6 @@
-use soroban_sdk::{contracttype, Address, Env, String};
+use crate::storage::DEFAULT_PERSISTENT_TTL;
 use crate::DataKey;
-use crate::storage::{DEFAULT_PERSISTENT_TTL};
+use soroban_sdk::{contracttype, Address, Env, String};
 
 /// On-chain developer profile stored in persistent ledger storage.
 ///

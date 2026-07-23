@@ -1,32 +1,33 @@
+//! Multi-asset escrow swap router.
+//!
+//! Converts arbitrary incoming SAC tokens into an approved vault stablecoin
+//! (e.g. USDC/ORGUSD) through one or more DEX pool hops, guarded by an
+//! oracle-derived minimum-return check so the conversion cannot be pushed
+//! through a manipulated pool price.
+//!
+//! Pool contracts are expected to expose the `PoolClient` interface — a
+//! generic two-asset AMM pool that receives its input token via a direct
+//! `transfer` (mirroring the Uniswap V2 / Soroswap pair pattern: the router
+//! sends tokens to the pool, then calls `swap`, which pays the output out of
+//! its own reserves). The oracle is expected to expose the `OracleClient`
+//! interface — a single `price()` entry point returning the asset price
+//! scaled by `ORACLE_PRICE_DECIMALS`, mirroring the Reflector oracle's
+//! `lastprice`.
+//!
+//! Route resolution (path validity, approved destination, oracle pricing) is
+//! fully checked *before* any tokens are pulled from the sender, so an
+//! unresolved route never touches the sender's balance. If the pools
+//! themselves fail to deliver the oracle-guarded minimum return, the whole
+//! call traps and the host transaction reverts — including the initial pull
+//! — which is the standard, atomic "refund" pattern used by production DEX
+//! routers.
+
 use soroban_sdk::{contractclient, contracttype, Address, Env, String, Vec};
 
 use crate::DataKey;
 
-/// Multi-asset escrow swap router.
-///
-/// Converts arbitrary incoming SAC tokens into an approved vault stablecoin
-/// (e.g. USDC/ORGUSD) through one or more DEX pool hops, guarded by an
-/// oracle-derived minimum-return check so the conversion cannot be pushed
-/// through a manipulated pool price.
-///
-/// Pool contracts are expected to expose the `PoolClient` interface — a
-/// generic two-asset AMM pool that receives its input token via a direct
-/// `transfer` (mirroring the Uniswap V2 / Soroswap pair pattern: the router
-/// sends tokens to the pool, then calls `swap`, which pays the output out of
-/// its own reserves). The oracle is expected to expose the `OracleClient`
-/// interface — a single `price()` entry point returning the asset price
-/// scaled by `ORACLE_PRICE_DECIMALS`, mirroring the Reflector oracle's
-/// `lastprice`.
-///
-/// Route resolution (path validity, approved destination, oracle pricing) is
-/// fully checked *before* any tokens are pulled from the sender, so an
-/// unresolved route never touches the sender's balance. If the pools
-/// themselves fail to deliver the oracle-guarded minimum return, the whole
-/// call traps and the host transaction reverts — including the initial pull
-/// — which is the standard, atomic "refund" pattern used by production DEX
-/// routers.
-
 pub const ORACLE_PRICE_DECIMALS: u32 = 7;
+
 const BPS_DENOMINATOR: i128 = 10_000;
 
 // ============================================================================
@@ -139,7 +140,9 @@ pub fn configure(
         max_hops,
         default_slippage_bps,
     };
-    env.storage().instance().set(&SwapRouterKey::Config, &config);
+    env.storage()
+        .instance()
+        .set(&SwapRouterKey::Config, &config);
 }
 
 pub fn get_config(env: Env) -> RouterConfig {
@@ -224,14 +227,23 @@ fn execute_route(env: &Env, route: &SwapRoute, amount_in: i128, vault: &Address)
         let token_out = route.path.get(i + 1).unwrap();
         let pool = route.pools.get(i).unwrap();
         let is_last_hop = i + 1 == hops;
-        let hop_recipient = if is_last_hop { vault.clone() } else { this_contract.clone() };
+        let hop_recipient = if is_last_hop {
+            vault.clone()
+        } else {
+            this_contract.clone()
+        };
 
         // Uniswap-V2-style pattern: send the hop's input straight to the pool,
         // then invoke it — no approve/transferFrom dance required.
-        soroban_sdk::token::Client::new(env, &token_in).transfer(&this_contract, &pool, &current_amount);
+        soroban_sdk::token::Client::new(env, &token_in).transfer(
+            &this_contract,
+            &pool,
+            &current_amount,
+        );
 
         let pool_client = PoolClient::new(env, &pool);
-        current_amount = pool_client.swap(&current_amount, &0, &token_in, &token_out, &hop_recipient);
+        current_amount =
+            pool_client.swap(&current_amount, &0, &token_in, &token_out, &hop_recipient);
     }
 
     current_amount
@@ -291,7 +303,9 @@ fn update_stats(env: &Env, conversions_delta: u32, refunds_delta: u32, stablecoi
     stats.total_conversions += conversions_delta;
     stats.total_refunds += refunds_delta;
     stats.total_stablecoin_out += stablecoin_out_delta;
-    env.storage().persistent().set(&SwapRouterKey::Stats, &stats);
+    env.storage()
+        .persistent()
+        .set(&SwapRouterKey::Stats, &stats);
 }
 
 // ============================================================================
@@ -329,7 +343,10 @@ pub fn convert_incoming_deposit(
 
     if !validate_route(&env, &config, &token_in, &route) {
         update_stats(&env, 0, 1, 0);
-        return ConversionOutcome::Refunded(String::from_str(&env, "swap route could not be resolved"));
+        return ConversionOutcome::Refunded(String::from_str(
+            &env,
+            "swap route could not be resolved",
+        ));
     }
 
     let stablecoin_out = route.path.get(route.path.len() - 1).unwrap();
@@ -339,14 +356,20 @@ pub fn convert_incoming_deposit(
         Ok(Ok(Some(p))) if p > 0 => p,
         _ => {
             update_stats(&env, 0, 1, 0);
-            return ConversionOutcome::Refunded(String::from_str(&env, "no oracle price for input asset"));
+            return ConversionOutcome::Refunded(String::from_str(
+                &env,
+                "no oracle price for input asset",
+            ));
         }
     };
     let price_out = match oracle.try_price(&stablecoin_out) {
         Ok(Ok(Some(p))) if p > 0 => p,
         _ => {
             update_stats(&env, 0, 1, 0);
-            return ConversionOutcome::Refunded(String::from_str(&env, "no oracle price for output asset"));
+            return ConversionOutcome::Refunded(String::from_str(
+                &env,
+                "no oracle price for output asset",
+            ));
         }
     };
 

@@ -1,14 +1,18 @@
 #![cfg(test)]
+#![allow(deprecated)]
 
-use crate::{TaskManagerContract, TaskManagerContractClient, TaskStatus};
+use crate::{TaskManagerContract, TaskManagerContractClient};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::token::StellarAssetClient;
 use soroban_sdk::{Address, Env, String, Vec};
 
 // ── Shared setup helper ────────────────────────────────────────────────────
 
-fn setup_initialized_contract(env: &Env, fee_bps: u32) -> (
-    TaskManagerContractClient,
+fn setup_initialized_contract(
+    env: &Env,
+    fee_bps: u32,
+) -> (
+    TaskManagerContractClient<'_>,
     Address, // contract_id
     Address, // admin
     Address, // token_contract
@@ -33,8 +37,7 @@ fn test_initialization() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, _, admin, token_contract, fee_recipient) =
-        setup_initialized_contract(&env, 100);
+    let (client, _, admin, token_contract, fee_recipient) = setup_initialized_contract(&env, 100);
 
     // Double-initialization must fail
     let res = client.try_initialize(&admin, &100, &token_contract, &fee_recipient);
@@ -76,7 +79,10 @@ fn test_create_and_complete_task_flow() {
     client.submit_work(
         &assignee,
         &task_id,
-        &String::from_str(&env, "https://github.com/LatterFixxx/LatterFix-Smart-contract"),
+        &String::from_str(
+            &env,
+            "https://github.com/LatterFixxx/LatterFix-Smart-contract",
+        ),
     );
     client.complete_task(&creator, &task_id);
 
@@ -93,8 +99,7 @@ fn test_cancel_task_refund() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, contract_id, _, token_contract, _) =
-        setup_initialized_contract(&env, 100);
+    let (client, contract_id, _, token_contract, _) = setup_initialized_contract(&env, 100);
 
     let creator = Address::generate(&env);
     StellarAssetClient::new(&env, &token_contract).mint(&creator, &500);
@@ -112,7 +117,11 @@ fn test_cancel_task_refund() {
     assert_eq!(token.balance(&contract_id), 500);
 
     client.cancel_task(&creator, &task_id);
-    assert_eq!(token.balance(&creator), 500, "creator must be fully refunded");
+    assert_eq!(
+        token.balance(&creator),
+        500,
+        "creator must be fully refunded"
+    );
     assert_eq!(token.balance(&contract_id), 0);
 }
 
@@ -123,8 +132,7 @@ fn test_dispute_and_resolution() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, contract_id, admin, token_contract, _) =
-        setup_initialized_contract(&env, 100);
+    let (client, contract_id, admin, token_contract, _) = setup_initialized_contract(&env, 100);
 
     let creator = Address::generate(&env);
     let assignee = Address::generate(&env);
@@ -162,7 +170,9 @@ fn test_user_profile_lifecycle() {
 
     client.create_profile(&user, &username, &bio);
 
-    let profile = client.get_profile(&user).expect("profile must exist after creation");
+    let profile = client
+        .get_profile(&user)
+        .expect("profile must exist after creation");
     assert_eq!(profile.address, user);
     assert_eq!(profile.username, username);
     assert_eq!(profile.reputation, 100, "starting reputation is 100");
@@ -186,8 +196,7 @@ fn test_dispute_full_assignee_payout() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, contract_id, admin, token_contract, _) =
-        setup_initialized_contract(&env, 0); // 0% fee for clean assertions
+    let (client, contract_id, admin, token_contract, _) = setup_initialized_contract(&env, 0); // 0% fee for clean assertions
 
     let creator = Address::generate(&env);
     let assignee = Address::generate(&env);
@@ -246,7 +255,11 @@ fn test_multiple_concurrent_tasks() {
     );
 
     let token = soroban_sdk::token::Client::new(&env, &token_contract);
-    assert_eq!(token.balance(&contract_id), 3000, "both task rewards locked");
+    assert_eq!(
+        token.balance(&contract_id),
+        3000,
+        "both task rewards locked"
+    );
     assert_eq!(token.balance(&creator), 0);
 
     // Complete task 1 → a1
@@ -292,7 +305,10 @@ fn test_cannot_double_assign() {
     client.assign_task(&a1, &task_id);
     // Second assignment to same task must fail
     let result = client.try_assign_task(&a2, &task_id);
-    assert!(result.is_err(), "double-assigning a task should be rejected");
+    assert!(
+        result.is_err(),
+        "double-assigning a task should be rejected"
+    );
 }
 
 // ── Test 9: Deposits into different tokens are tracked on separate ledgers ─
@@ -360,12 +376,20 @@ fn test_vault_claim_reduces_correct_token_only() {
     client.claim_from_vault(&worker, &usdc, &300);
 
     assert_eq!(client.get_depositor_vault_balance(&worker, &usdc), 0);
-    assert_eq!(client.get_depositor_vault_balance(&worker, &eurt), 200, "EURT balance must be untouched by a USDC claim");
+    assert_eq!(
+        client.get_depositor_vault_balance(&worker, &eurt),
+        200,
+        "EURT balance must be untouched by a USDC claim"
+    );
     assert_eq!(client.get_token_vault_balance(&usdc), 0);
     assert_eq!(client.get_token_vault_balance(&eurt), 200);
 
     let usdc_token = soroban_sdk::token::Client::new(&env, &usdc);
-    assert_eq!(usdc_token.balance(&worker), 300, "worker received the claimed USDC back");
+    assert_eq!(
+        usdc_token.balance(&worker),
+        300,
+        "worker received the claimed USDC back"
+    );
 }
 
 // ── Test 11: Deposit rejected for a token that isn't registered ──────────
@@ -385,7 +409,10 @@ fn test_vault_deposit_rejects_unsupported_token() {
 
     // ORGUSD was never added via add_supported_token
     let result = client.try_deposit_to_vault(&depositor, &orgusd, &100);
-    assert!(result.is_err(), "depositing an unsupported token must be rejected");
+    assert!(
+        result.is_err(),
+        "depositing an unsupported token must be rejected"
+    );
 }
 
 // ── Test 12: Claim beyond depositor's balance is rejected ────────────────
@@ -406,7 +433,10 @@ fn test_vault_claim_rejects_insufficient_balance() {
     client.deposit_to_vault(&depositor, &usdc, &50);
 
     let result = client.try_claim_from_vault(&depositor, &usdc, &51);
-    assert!(result.is_err(), "claiming more than the deposited balance must be rejected");
+    assert!(
+        result.is_err(),
+        "claiming more than the deposited balance must be rejected"
+    );
 }
 
 // ── Test 13: Removing a supported token blocks further deposits ──────────
@@ -429,7 +459,10 @@ fn test_vault_removed_token_blocks_new_deposits() {
     let depositor = Address::generate(&env);
     StellarAssetClient::new(&env, &usdc).mint(&depositor, &10);
     let result = client.try_deposit_to_vault(&depositor, &usdc, &10);
-    assert!(result.is_err(), "deposits must be rejected after a token is removed");
+    assert!(
+        result.is_err(),
+        "deposits must be rejected after a token is removed"
+    );
 }
 
 // ── Test: Merkle Payroll ───────────────────────────────────────────────────
@@ -442,12 +475,11 @@ fn test_merkle_payroll_claim() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, contract_id, admin, token_contract, _) =
-        setup_initialized_contract(&env, 100);
+    let (client, _contract_id, admin, token_contract, _) = setup_initialized_contract(&env, 100);
 
     let token_admin_client = soroban_sdk::token::StellarAssetClient::new(&env, &token_contract);
     let token_client = soroban_sdk::token::Client::new(&env, &token_contract);
-    
+
     let claimant1 = Address::generate(&env);
     let claimant2 = Address::generate(&env);
     let amount1: i128 = 1000;
@@ -455,7 +487,7 @@ fn test_merkle_payroll_claim() {
 
     let depositor = Address::generate(&env);
     token_admin_client.mint(&depositor, &5000);
-    
+
     client.add_supported_token(&admin, &token_contract);
     client.deposit_to_vault(&depositor, &token_contract, &5000);
 
@@ -491,6 +523,12 @@ fn test_merkle_payroll_claim() {
     let forged_amount = 3000;
     let mut bogus_proof = Vec::new(&env);
     bogus_proof.push_back(leaf1.clone());
-    let res2 = client.try_claim_payroll(&claimant2, &token_contract, &payroll_id, &forged_amount, &bogus_proof);
+    let res2 = client.try_claim_payroll(
+        &claimant2,
+        &token_contract,
+        &payroll_id,
+        &forged_amount,
+        &bogus_proof,
+    );
     assert!(res2.is_err(), "forged claim should fail");
 }

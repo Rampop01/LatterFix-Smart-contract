@@ -1,0 +1,25 @@
+name: Formal Verification (Kani)
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  kani:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Kani
+        run: cargo install --locked kani-verifier && cargo kani setup
+
+      - name: Run all Kani proof harnesses
+        run: cargo kani
