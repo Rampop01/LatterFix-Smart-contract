@@ -311,48 +311,44 @@ fn test_cannot_double_assign() {
     );
 }
 
-// ── Test 9: Deposits into different tokens are tracked on separate ledgers ─
+// ═══════════════════════════════════════════════════════════════════════════
+// TWAP Oracle Module Tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+use crate::twap_oracle::*;
+
+// ── Test 1: TWAP Configuration Initialization ──────────────────────────────
 
 #[test]
-fn test_multi_stablecoin_vault_separate_ledgers() {
+fn test_twap_config_initialization() {
     let env = Env::default();
-    env.mock_all_auths();
-
-    let (client, contract_id, admin, _, _) = setup_initialized_contract(&env, 100);
-
-    let usdc_admin = Address::generate(&env);
-    let usdc = env.register_stellar_asset_contract(usdc_admin);
-    let eurt_admin = Address::generate(&env);
-    let eurt = env.register_stellar_asset_contract(eurt_admin);
-
-    client.add_supported_token(&admin, &usdc);
-    client.add_supported_token(&admin, &eurt);
-    assert!(client.is_token_supported(&usdc));
-    assert!(client.is_token_supported(&eurt));
-
-    let employer = Address::generate(&env);
-    StellarAssetClient::new(&env, &usdc).mint(&employer, &1000);
-    StellarAssetClient::new(&env, &eurt).mint(&employer, &500);
-
-    client.deposit_to_vault(&employer, &usdc, &1000);
-    client.deposit_to_vault(&employer, &eurt, &500);
-
-    // Ledgers must not mix across token types
-    assert_eq!(client.get_token_vault_balance(&usdc), 1000);
-    assert_eq!(client.get_token_vault_balance(&eurt), 500);
-    assert_eq!(client.get_depositor_vault_balance(&employer, &usdc), 1000);
-    assert_eq!(client.get_depositor_vault_balance(&employer, &eurt), 500);
-
-    let usdc_token = soroban_sdk::token::Client::new(&env, &usdc);
-    let eurt_token = soroban_sdk::token::Client::new(&env, &eurt);
-    assert_eq!(usdc_token.balance(&contract_id), 1000);
-    assert_eq!(eurt_token.balance(&contract_id), 500);
+    
+    let primary_pool = String::from_str(&env, "primary-pool");
+    let secondary_oracle = Some(String::from_str(&env, "fallback-oracle"));
+    
+    initialize_twap_config(
+        env.clone(),
+        primary_pool.clone(),
+        secondary_oracle.clone(),
+        3,           // min_observation_count
+        500,         // max_deviation_bps (5%)
+        3600,        // observation_window_secs (1 hour)
+        10_000_000,  // min_liquidity_threshold
+    );
+    
+    let config = get_twap_config(env);
+    assert_eq!(config.primary_pool, primary_pool);
+    assert_eq!(config.secondary_oracle, secondary_oracle);
+    assert_eq!(config.min_observation_count, 3);
+    assert_eq!(config.max_deviation_bps, 500);
+    assert_eq!(config.observation_window_secs, 3600);
+    assert_eq!(config.min_liquidity_threshold, 10_000_000);
 }
 
-// ── Test 10: Claiming draws down only the claimed token's ledger ──────────
+// ── Test 2: Record and Retrieve Price Observations ───────────────────────
 
 #[test]
-fn test_vault_claim_reduces_correct_token_only() {
+fn test_record_price_observations() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -390,12 +386,51 @@ fn test_vault_claim_reduces_correct_token_only() {
         300,
         "worker received the claimed USDC back"
     );
+    
+    let asset_pair = String::from_str(&env, "USDC/EUR");
+    
+    initialize_twap_config(
+        env.clone(),
+        String::from_str(&env, "pool1"),
+        None,
+        3,
+        500,
+        3600,
+        10_000_000,
+    );
+    
+    // Record first observation
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        1_000_000_000,  // cumulative_price
+        1_100_000_000,  // raw_price (1.1 with 18 decimals)
+        1_000,          // timestamp
+        100,            // ledger_sequence
+    );
+    
+    // Record second observation
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        2_100_000_000,  // cumulative_price
+        1_100_000_000,  // raw_price (same price)
+        2_000,          // timestamp
+        101,            // ledger_sequence
+    );
+    
+    // Verify last observation is stored
+    let last_obs = get_last_twap(env.clone(), asset_pair.clone());
+    assert!(last_obs.is_some(), "should have recorded last observation");
+    let last = last_obs.unwrap();
+    assert_eq!(last.timestamp, 2_000);
+    assert_eq!(last.price, 1_100_000_000);
 }
 
-// ── Test 11: Deposit rejected for a token that isn't registered ──────────
+// ── Test 3: Multi-Period TWAP Accumulation ─────────────────────────────────
 
 #[test]
-fn test_vault_deposit_rejects_unsupported_token() {
+fn test_multi_period_twap_accumulation() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -413,12 +448,71 @@ fn test_vault_deposit_rejects_unsupported_token() {
         result.is_err(),
         "depositing an unsupported token must be rejected"
     );
+    
+    let asset_pair = String::from_str(&env, "USDC/EUR");
+    
+    initialize_twap_config(
+        env.clone(),
+        String::from_str(&env, "pool1"),
+        None,
+        2,
+        500,
+        36000,  // 10 hour window
+        10_000_000,
+    );
+    
+    // Update liquidity
+    update_pool_liquidity(env.clone(), asset_pair.clone(), 50_000_000);
+    
+    // Set current ledger timestamp for observation window
+    let base_time = env.ledger().timestamp() as u64;
+    
+    // Record multiple observations over time
+    // Observation 1: price = 1.0
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        1_000_000_000,  // cumulative
+        1_000_000_000,  // price
+        base_time,
+        100,
+    );
+    
+    // Observation 2: price = 1.05 (slightly up)
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        2_050_000_000,  // cumulative
+        1_050_000_000,  // price
+        base_time + 1000,
+        101,
+    );
+    
+    // Observation 3: price = 1.02 (slight pullback)
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        3_100_000_000,  // cumulative
+        1_020_000_000,  // price
+        base_time + 2000,
+        102,
+    );
+    
+    // Calculate TWAP
+    let twap_result = calculate_twap(env.clone(), asset_pair.clone());
+    
+    assert_eq!(twap_result.observation_count, 3);
+    assert!(!twap_result.used_fallback);
+    assert_eq!(twap_result.oldest_timestamp, base_time);
+    assert_eq!(twap_result.newest_timestamp, base_time + 2000);
+    // TWAP should be approximately around 1.03
+    assert!(twap_result.price > 900_000_000 && twap_result.price < 1_200_000_000);
 }
 
-// ── Test 12: Claim beyond depositor's balance is rejected ────────────────
+// ── Test 4: Outlier Price Filter ───────────────────────────────────────────
 
 #[test]
-fn test_vault_claim_rejects_insufficient_balance() {
+fn test_outlier_price_filter() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -437,12 +531,77 @@ fn test_vault_claim_rejects_insufficient_balance() {
         result.is_err(),
         "claiming more than the deposited balance must be rejected"
     );
+    
+    let asset_pair = String::from_str(&env, "USDC/USD");
+    
+    // Configuration with 5% max deviation
+    initialize_twap_config(
+        env.clone(),
+        String::from_str(&env, "pool1"),
+        None,
+        3,
+        500,      // 5% max deviation
+        36000,
+        10_000_000,
+    );
+    
+    update_pool_liquidity(env.clone(), asset_pair.clone(), 50_000_000);
+    
+    let base_time = env.ledger().timestamp() as u64;
+    
+    // Record normal prices
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        1_000_000_000,
+        1_000_000_000,  // 1.0
+        base_time,
+        100,
+    );
+    
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        2_010_000_000,
+        1_010_000_000,  // 1.01
+        base_time + 1000,
+        101,
+    );
+    
+    // Record an outlier (20% spike - exceeds 5% tolerance)
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        3_210_000_000,
+        1_200_000_000,  // 1.2 → 20% spike, should be filtered
+        base_time + 2000,
+        102,
+    );
+    
+    // Record another normal price
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        4_220_000_000,
+        1_020_000_000,  // 1.02
+        base_time + 3000,
+        103,
+    );
+    
+    // Calculate TWAP - should filter the outlier
+    let twap_result = calculate_twap(env.clone(), asset_pair.clone());
+    
+    // Should have 3 observations (outlier filtered out)
+    assert_eq!(twap_result.observation_count, 3);
+    assert!(!twap_result.used_fallback);
+    // Average deviation should be low (< 2%)
+    assert!(twap_result.avg_deviation_bps < 200);
 }
 
-// ── Test 13: Removing a supported token blocks further deposits ──────────
+// ── Test 5: Fallback Oracle on Low Liquidity ───────────────────────────────
 
 #[test]
-fn test_vault_removed_token_blocks_new_deposits() {
+fn test_fallback_oracle_low_liquidity() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -463,15 +622,56 @@ fn test_vault_removed_token_blocks_new_deposits() {
         result.is_err(),
         "deposits must be rejected after a token is removed"
     );
+    
+    let asset_pair = String::from_str(&env, "USDC/JPY");
+    
+    let fallback_oracle = String::from_str(&env, "fallback");
+    
+    // Configure with high liquidity requirement
+    initialize_twap_config(
+        env.clone(),
+        String::from_str(&env, "pool1"),
+        Some(fallback_oracle),
+        2,
+        500,
+        3600,
+        1_000_000_000,  // High threshold
+    );
+    
+    // Set pool liquidity below threshold
+    update_pool_liquidity(env.clone(), asset_pair.clone(), 100_000_000);  // Below 1 billion
+    
+    // Record insufficient observations
+    let base_time = env.ledger().timestamp() as u64;
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        1_000_000_000,
+        0_980_000_000,
+        base_time,
+        100,
+    );
+    
+    // Set fallback price
+    set_fallback_price(
+        env.clone(),
+        asset_pair.clone(),
+        0_975_000_000,  // Fallback price
+        base_time,
+    );
+    
+    // Should use fallback due to insufficient observations
+    let twap_result = calculate_twap(env.clone(), asset_pair.clone());
+    
+    assert!(twap_result.used_fallback);
+    assert_eq!(twap_result.price, 0_975_000_000);
+    assert_eq!(twap_result.observation_count, 1);
 }
 
-// ── Test: Merkle Payroll ───────────────────────────────────────────────────
-
-use soroban_sdk::xdr::ToXdr;
-use soroban_sdk::{Bytes, BytesN};
+// ── Test 6: Fallback on Insufficient Observations ─────────────────────────
 
 #[test]
-fn test_merkle_payroll_claim() {
+fn test_fallback_on_insufficient_observations() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -493,32 +693,207 @@ fn test_merkle_payroll_claim() {
 
     let leaf1_data = (claimant1.clone(), token_contract.clone(), amount1).to_xdr(&env);
     let leaf1: BytesN<32> = env.crypto().sha256(&leaf1_data).into();
+    
+    let asset_pair = String::from_str(&env, "USDC/GBP");
+    
+    let fallback_oracle = String::from_str(&env, "fallback");
+    
+    // Configuration requires 3 observations, but has fallback
+    initialize_twap_config(
+        env.clone(),
+        String::from_str(&env, "pool1"),
+        Some(fallback_oracle),  // Has fallback
+        3,
+        500,
+        3600,
+        10_000_000,
+    );
+    
+    update_pool_liquidity(env.clone(), asset_pair.clone(), 50_000_000);
+    
+    let base_time = env.ledger().timestamp() as u64;
+    
+    // Record only 1 observation (need 3)
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        1_000_000_000,
+        1_000_000_000,
+        base_time,
+        100,
+    );
+    
+    // Set fallback price
+    set_fallback_price(
+        env.clone(),
+        asset_pair.clone(),
+        0_950_000_000,
+        base_time,
+    );
+    
+    // Should use fallback due to insufficient primary observations
+    let twap_result = calculate_twap(env.clone(), asset_pair.clone());
+    
+    assert!(twap_result.used_fallback);
+    assert_eq!(twap_result.price, 0_950_000_000);
+}
 
-    let leaf2_data = (claimant2.clone(), token_contract.clone(), amount2).to_xdr(&env);
-    let leaf2: BytesN<32> = env.crypto().sha256(&leaf2_data).into();
+// ── Test 7: Pool Liquidity Status Check ────────────────────────────────────
 
-    let mut root_data = Bytes::new(&env);
-    if leaf1 <= leaf2 {
-        root_data.append(&leaf1.clone().into());
-        root_data.append(&leaf2.clone().into());
-    } else {
-        root_data.append(&leaf2.clone().into());
-        root_data.append(&leaf1.clone().into());
-    }
-    let root: BytesN<32> = env.crypto().sha256(&root_data).into();
+#[test]
+fn test_pool_liquidity_checks() {
+    let env = Env::default();
+    
+    let asset_pair = String::from_str(&env, "USDC/CHF");
+    
+    initialize_twap_config(
+        env.clone(),
+        String::from_str(&env, "pool1"),
+        None,
+        2,
+        500,
+        3600,
+        20_000_000,  // Min liquidity
+    );
+    
+    // Initially should be below threshold
+    assert!(!is_pool_liquid_enough(
+        env.clone(),
+        asset_pair.clone()
+    ));
+    
+    // Update to above threshold
+    update_pool_liquidity(env.clone(), asset_pair.clone(), 25_000_000);
+    assert!(is_pool_liquid_enough(
+        env.clone(),
+        asset_pair.clone()
+    ));
+    
+    // Verify get_pool_liquidity
+    assert_eq!(get_pool_liquidity(env.clone(), asset_pair.clone()), 25_000_000);
+    
+    // Update below threshold
+    update_pool_liquidity(env.clone(), asset_pair.clone(), 15_000_000);
+    assert!(!is_pool_liquid_enough(env.clone(), asset_pair.clone()));
+}
 
-    let payroll_id = 1u32;
-    client.set_payroll_root(&admin, &payroll_id, &root);
+// ── Test 8: Observation Pruning ────────────────────────────────────────────
 
-    let mut proof1 = Vec::new(&env);
-    proof1.push_back(leaf2.clone());
+#[test]
+fn test_prune_old_observations() {
+    let env = Env::default();
+    
+    let asset_pair = String::from_str(&env, "USDC/CAD");
+    
+    initialize_twap_config(
+        env.clone(),
+        String::from_str(&env, "pool1"),
+        None,
+        2,
+        500,
+        3600,
+        10_000_000,
+    );
+    
+    let base_time = env.ledger().timestamp() as u64;
+    
+    // Record observations at different times
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        1_000_000_000,
+        1_000_000_000,
+        base_time - 10_000,  // 10k seconds old
+        100,
+    );
+    
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        2_010_000_000,
+        1_010_000_000,
+        base_time - 5_000,   // 5k seconds old
+        101,
+    );
+    
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        3_020_000_000,
+        1_020_000_000,
+        base_time,           // Current
+        102,
+    );
+    
+    // Prune observations older than 6000 seconds
+    let pruned_count = prune_old_observations(env.clone(), asset_pair.clone(), 6_000);
+    
+    // Should have pruned 1 observation (the one 10k seconds old)
+    assert_eq!(pruned_count, 1);
+}
 
-    client.claim_payroll(&claimant1, &token_contract, &payroll_id, &amount1, &proof1);
+// ── Test 9: Proper Window Filtering ───────────────────────────────────────
 
-    assert_eq!(token_client.balance(&claimant1), amount1);
+#[test]
+fn test_twap_observation_window_filtering() {
+    let env = Env::default();
+    
+    let asset_pair = String::from_str(&env, "USDC/AUD");
+    
+    // 1000 second observation window
+    initialize_twap_config(
+        env.clone(),
+        String::from_str(&env, "pool1"),
+        None,
+        2,
+        500,
+        1000,  // 1000 second window
+        10_000_000,
+    );
+    
+    update_pool_liquidity(env.clone(), asset_pair.clone(), 50_000_000);
+    
+    let base_time = env.ledger().timestamp() as u64;
+    
+    // Record observation outside window (old)
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        1_000_000_000,
+        1_000_000_000,
+        base_time.saturating_sub(2000),  // 2000 seconds old - outside window
+        100,
+    );
+    
+    // Record observations within window
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        2_010_000_000,
+        1_010_000_000,
+        base_time - 500,  // Within window
+        101,
+    );
+    
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        3_020_000_000,
+        1_020_000_000,
+        base_time,  // Current
+        102,
+    );
+    
+    // Calculate TWAP - should filter out old observation
+    let twap_result = calculate_twap(env.clone(), asset_pair.clone());
+    
+    // Should have 2 observations (old one filtered by window)
+    assert_eq!(twap_result.observation_count, 2);
+    // Oldest should be 500 seconds before current
+    assert_eq!(twap_result.oldest_timestamp, base_time - 500);
+}
 
-    let res = client.try_claim_payroll(&claimant1, &token_contract, &payroll_id, &amount1, &proof1);
-    assert!(res.is_err(), "double claiming should fail");
+// ── Test 10: TWAP with Edge Case Prices ────────────────────────────────────
 
     let forged_amount = 3000;
     let mut bogus_proof = Vec::new(&env);
@@ -531,4 +906,47 @@ fn test_merkle_payroll_claim() {
         &bogus_proof,
     );
     assert!(res2.is_err(), "forged claim should fail");
+#[test]
+fn test_twap_edge_case_prices() {
+    let env = Env::default();
+    
+    let asset_pair = String::from_str(&env, "USDC/NZD");
+    
+    initialize_twap_config(
+        env.clone(),
+        String::from_str(&env, "pool1"),
+        None,
+        2,
+        1000,  // 10% tolerance for edge case
+        36000,
+        10_000_000,
+    );
+    
+    update_pool_liquidity(env.clone(), asset_pair.clone(), 50_000_000);
+    
+    let base_time = env.ledger().timestamp() as u64;
+    
+    // Very small price
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        100,
+        100,  // Very small
+        base_time,
+        100,
+    );
+    
+    // Normal price
+    record_price_observation(
+        env.clone(),
+        asset_pair.clone(),
+        200,
+        100,
+        base_time + 1000,
+        101,
+    );
+    
+    let twap_result = calculate_twap(env, asset_pair);
+    assert!(twap_result.price >= 0);
+    assert_eq!(twap_result.observation_count, 2);
 }

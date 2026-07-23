@@ -8,6 +8,7 @@ pub mod merkle;
 pub mod pausable;
 pub mod reputation;
 pub mod storage;
+pub mod twap_oracle;
 pub mod swap_router;
 pub mod user_profile;
 pub mod vault;
