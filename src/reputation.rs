@@ -93,7 +93,7 @@ pub fn init_reputation_tiers(env: Env) {
         });
         v
     };
-    
+
     env.storage()
         .persistent()
         .set(&ReputationKey::ReputationTiers, &tiers);
@@ -108,19 +108,13 @@ pub fn award_reputation(
     description: String,
 ) {
     let key = ReputationKey::UserPoints(user.clone());
-    let mut current: i32 = env
-        .storage()
-        .persistent()
-        .get(&key)
-        .unwrap_or(100i32); // Starting reputation
-    
+    let mut current: i32 = env.storage().persistent().get(&key).unwrap_or(100i32); // Starting reputation
+
     current = (current + points).max(0); // Floor at 0
-    env.storage()
-        .persistent()
-        .set(&key, &current);
-    
+    env.storage().persistent().set(&key, &current);
+
     // Record the event
-    let event = ReputationEvent {
+    let _event = ReputationEvent {
         user: user.clone(),
         points,
         event_type,
@@ -128,27 +122,30 @@ pub fn award_reputation(
         reference_id,
         description,
     };
-    
+
     let event_count_key = ReputationKey::EventCount(user.clone());
-    let mut event_count: u32 = env.storage().persistent().get(&event_count_key).unwrap_or(0);
+    let mut event_count: u32 = env
+        .storage()
+        .persistent()
+        .get(&event_count_key)
+        .unwrap_or(0);
     event_count += 1;
-    env.storage().persistent().set(&event_count_key, &event_count);
-    
+    env.storage()
+        .persistent()
+        .set(&event_count_key, &event_count);
+
     // Update leaderboard
     update_leaderboard(&env, user, current as u32);
 }
 
 pub fn get_user_reputation(env: Env, user: Address) -> u32 {
     let key = ReputationKey::UserPoints(user);
-    env.storage()
-        .persistent()
-        .get(&key)
-        .unwrap_or(100) as u32
+    env.storage().persistent().get(&key).unwrap_or(100) as u32
 }
 
 pub fn get_user_tier(env: Env, user: Address) -> String {
     let points = get_user_reputation(env.clone(), user);
-    
+
     let tiers: Vec<ReputationTier> = env
         .storage()
         .persistent()
@@ -161,13 +158,13 @@ pub fn get_user_tier(env: Env, user: Address) -> String {
                 .get(&ReputationKey::ReputationTiers)
                 .unwrap()
         });
-    
+
     for tier in tiers.iter() {
         if points >= tier.min_points && points <= tier.max_points {
             return tier.name;
         }
     }
-    
+
     String::from_str(&env, "Unknown")
 }
 
@@ -178,7 +175,7 @@ pub fn update_leaderboard(env: &Env, user: Address, points: u32) {
         .persistent()
         .get(&key)
         .unwrap_or_else(|| Map::new(env));
-    
+
     leaderboard.set(user, points);
     env.storage().persistent().set(&key, &leaderboard);
 }
@@ -190,12 +187,12 @@ pub fn get_leaderboard(env: Env) -> Vec<(Address, u32)> {
         .persistent()
         .get(&key)
         .unwrap_or_else(|| Map::new(&env));
-    
+
     let mut result = Vec::new(&env);
     for (user, points) in leaderboard.iter() {
         result.push_back((user, points));
     }
-    
+
     result
 }
 

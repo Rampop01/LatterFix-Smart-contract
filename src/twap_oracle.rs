@@ -181,7 +181,7 @@ pub fn set_fallback_price(
 // ──────────────────────────────────────────────────────────────────────────
 
 /// Calculate median price from observations
-fn calculate_median(env: &Env, prices: &Vec<i128>) -> i128 {
+fn calculate_median(_env: &Env, prices: &Vec<i128>) -> i128 {
     if prices.is_empty() {
         panic!("cannot calculate median of empty vector");
     }
@@ -299,7 +299,7 @@ pub fn calculate_twap(
     }
 
     // Filter observations within the observation window
-    let current_timestamp = env.ledger().timestamp() as u64;
+    let current_timestamp = env.ledger().timestamp();
     let window_start = current_timestamp.saturating_sub(config.observation_window_secs);
 
     let mut window_observations = Vec::new(&env);
@@ -355,7 +355,7 @@ pub fn calculate_twap(
         price: twap_price,
         oldest_timestamp: first_obs.timestamp,
         newest_timestamp: last_obs.timestamp,
-        observation_count: filtered_observations.len() as u32,
+        observation_count: filtered_observations.len(),
         used_fallback: false,
         avg_deviation_bps,
     }
@@ -399,7 +399,7 @@ pub fn prune_old_observations(
     asset_pair: String,
     retention_secs: u64,
 ) -> u32 {
-    let config = get_twap_config(env.clone());
+    let _config = get_twap_config(env.clone());
     let obs_key = TwapStorageKey::Observations(asset_pair.clone());
     let all_observations: Vec<PriceObservation> = env
         .storage()
@@ -407,7 +407,7 @@ pub fn prune_old_observations(
         .get(&obs_key)
         .unwrap_or_else(|| Vec::new(&env));
 
-    let cutoff_timestamp = (env.ledger().timestamp() as u64)
+    let cutoff_timestamp = env.ledger().timestamp()
         .saturating_sub(retention_secs);
 
     let mut kept_observations = Vec::new(&env);

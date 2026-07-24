@@ -1,21 +1,21 @@
 use soroban_sdk::{contracttype, symbol_short, Address, Bytes, BytesN, Env, String, Vec};
 
-/// Zero-Knowledge Proof (ZKP) Identity Attestation Module
-///
-/// Lets an employee prove eligibility / KYC status during payroll processing
-/// without revealing the underlying identity data on-chain. The flow is:
-///
-///   1. An admin registers the verification key (VK) of a proving circuit
-///      (e.g. "kyc-tier-1") via [`register_verification_key`].
-///   2. Off-chain, the employee produces a Groth16 zk-SNARK proof that they
-///      satisfy the circuit, together with the public signals and a nullifier.
-///   3. On-chain, [`verify_attestation`] validates the proof against the VK,
-///      binds the nullifier to the public signals, rejects replays, and records
-///      the attestation — the raw identity inputs never touch the ledger.
-///
-/// Replay protection is enforced with a spent-nullifier set: a nullifier is a
-/// deterministic, per-identity/per-circuit tag derived off-chain, so a given
-/// identity can be attested against a given circuit at most once.
+// Zero-Knowledge Proof (ZKP) Identity Attestation Module
+//
+// Lets an employee prove eligibility / KYC status during payroll processing
+// without revealing the underlying identity data on-chain. The flow is:
+//
+//   1. An admin registers the verification key (VK) of a proving circuit
+//      (e.g. "kyc-tier-1") via [`register_verification_key`].
+//   2. Off-chain, the employee produces a Groth16 zk-SNARK proof that they
+//      satisfy the circuit, together with the public signals and a nullifier.
+//   3. On-chain, [`verify_attestation`] validates the proof against the VK,
+//      binds the nullifier to the public signals, rejects replays, and records
+//      the attestation — the raw identity inputs never touch the ledger.
+//
+// Replay protection is enforced with a spent-nullifier set: a nullifier is a
+// deterministic, per-identity/per-circuit tag derived off-chain, so a given
+// identity can be attested against a given circuit at most once.
 
 // ──────────────────────────────────────────────────────────────────────────
 // Encoding constants (BLS12-381, uncompressed)
@@ -161,6 +161,7 @@ pub fn get_admin(env: Env) -> Address {
 }
 
 /// Register (or overwrite) the verification key for a circuit. Admin only.
+#[allow(clippy::too_many_arguments)]
 pub fn register_verification_key(
     env: Env,
     admin: Address,

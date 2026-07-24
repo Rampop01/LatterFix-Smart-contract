@@ -32,7 +32,9 @@ pub fn add_supported_token(env: &Env, token: Address) {
     let mut tokens = get_supported_tokens(env);
     if !tokens.contains(&token) {
         tokens.push_back(token);
-        env.storage().instance().set(&VaultKey::SupportedTokens, &tokens);
+        env.storage()
+            .instance()
+            .set(&VaultKey::SupportedTokens, &tokens);
     }
 }
 
@@ -44,7 +46,9 @@ pub fn remove_supported_token(env: &Env, token: Address) {
             remaining.push_back(t);
         }
     }
-    env.storage().instance().set(&VaultKey::SupportedTokens, &remaining);
+    env.storage()
+        .instance()
+        .set(&VaultKey::SupportedTokens, &remaining);
 }
 
 // ── Balance Reads ───────────────────────────────────────────────────────────
@@ -80,11 +84,15 @@ pub fn deposit(env: &Env, depositor: Address, token: Address, amount: i128) {
 
     let vault_key = VaultKey::VaultBalance(token.clone());
     let vault_total = get_vault_balance(env, token.clone());
-    env.storage().persistent().set(&vault_key, &(vault_total + amount));
+    env.storage()
+        .persistent()
+        .set(&vault_key, &(vault_total + amount));
 
     let dep_key = VaultKey::DepositorBalance(depositor.clone(), token.clone());
     let dep_balance = get_depositor_balance(env, depositor, token);
-    env.storage().persistent().set(&dep_key, &(dep_balance + amount));
+    env.storage()
+        .persistent()
+        .set(&dep_key, &(dep_balance + amount));
 }
 
 /// Claim `amount` of `token` out of the vault for `claimant`, drawing down
@@ -103,8 +111,12 @@ pub fn claim(env: &Env, claimant: Address, token: Address, amount: i128) {
     let vault_key = VaultKey::VaultBalance(token.clone());
     let vault_total = get_vault_balance(env, token.clone());
 
-    env.storage().persistent().set(&dep_key, &(dep_balance - amount));
-    env.storage().persistent().set(&vault_key, &(vault_total - amount));
+    env.storage()
+        .persistent()
+        .set(&dep_key, &(dep_balance - amount));
+    env.storage()
+        .persistent()
+        .set(&vault_key, &(vault_total - amount));
 
     let token_client = soroban_sdk::token::Client::new(env, &token);
     token_client.transfer(&env.current_contract_address(), &claimant, &amount);
@@ -160,7 +172,9 @@ pub fn claim_payroll(
         panic!("insufficient vault balance for payroll");
     }
 
-    env.storage().persistent().set(&vault_key, &(vault_total - amount));
+    env.storage()
+        .persistent()
+        .set(&vault_key, &(vault_total - amount));
 
     let token_client = soroban_sdk::token::Client::new(env, &token);
     token_client.transfer(&env.current_contract_address(), &claimant, &amount);

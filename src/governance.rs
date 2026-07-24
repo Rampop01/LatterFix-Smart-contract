@@ -31,8 +31,8 @@ pub struct Proposal {
     pub votes_for: u32,
     pub votes_against: u32,
     pub votes_abstain: u32,
-    pub quorum: u32,        // Minimum votes needed
-    pub threshold: u32,     // Percentage needed to pass (e.g., 51 = 51%)
+    pub quorum: u32,    // Minimum votes needed
+    pub threshold: u32, // Percentage needed to pass (e.g., 51 = 51%)
     pub executed_at: Option<u64>,
 }
 
@@ -42,7 +42,7 @@ pub struct Vote {
     pub voter: Address,
     pub proposal_id: u32,
     pub vote_type: VoteType,
-    pub weight: u32,        // Based on reputation
+    pub weight: u32, // Based on reputation
     pub voted_at: u64,
 }
 
@@ -50,17 +50,17 @@ pub struct Vote {
 pub enum GovernanceKey {
     Proposal(u32),
     ProposalCount,
-    Vote(u32, Address),     // (proposal_id, voter)
+    Vote(u32, Address), // (proposal_id, voter)
     Config,
-    Delegations(Address),   // Delegated voting
+    Delegations(Address), // Delegated voting
 }
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GovernanceConfig {
-    pub voting_period: u64,     // Duration in seconds
-    pub quorum: u32,            // Minimum votes needed
-    pub threshold: u32,         // Percentage to pass
+    pub voting_period: u64, // Duration in seconds
+    pub quorum: u32,        // Minimum votes needed
+    pub threshold: u32,     // Percentage to pass
     pub min_reputation_to_propose: u32,
     pub min_reputation_to_vote: u32,
 }
@@ -80,7 +80,7 @@ pub fn get_config(env: Env) -> GovernanceConfig {
 
 pub fn set_config(env: Env, admin: Address, config: GovernanceConfig) {
     admin.require_auth();
-    
+
     // Verify admin - this should be called from the main contract
     env.storage()
         .persistent()
@@ -94,20 +94,20 @@ pub fn create_proposal(
     description: String,
     quorum: Option<u32>,
     threshold: Option<u32>,
-    min_reputation: u32,
+    _min_reputation: u32,
 ) -> u32 {
     proposer.require_auth();
-    
+
     // Check reputation
     let config = get_config(env.clone());
-    
+
     let count_key = GovernanceKey::ProposalCount;
     let mut count: u32 = env.storage().persistent().get(&count_key).unwrap_or(0);
     count += 1;
-    
+
     let now = env.ledger().timestamp();
     let voting_ends_at = now + config.voting_period;
-    
+
     let proposal = Proposal {
         id: count,
         title,
@@ -123,46 +123,40 @@ pub fn create_proposal(
         threshold: threshold.unwrap_or(config.threshold),
         executed_at: None,
     };
-    
+
     env.storage()
         .persistent()
         .set(&GovernanceKey::Proposal(count), &proposal);
     env.storage().persistent().set(&count_key, &count);
-    
+
     count
 }
 
-pub fn cast_vote(
-    env: Env,
-    voter: Address,
-    proposal_id: u32,
-    vote_type: VoteType,
-    weight: u32,
-) {
+pub fn cast_vote(env: Env, voter: Address, proposal_id: u32, vote_type: VoteType, weight: u32) {
     voter.require_auth();
-    
+
     let proposal_key = GovernanceKey::Proposal(proposal_id);
     let mut proposal: Proposal = env
         .storage()
         .persistent()
         .get(&proposal_key)
         .unwrap_or_else(|| panic!("proposal not found"));
-    
+
     if proposal.status != ProposalStatus::Active {
         panic!("proposal not active");
     }
-    
+
     let now = env.ledger().timestamp();
     if now > proposal.voting_ends_at {
         panic!("voting period ended");
     }
-    
+
     // Check if already voted
     let vote_key = GovernanceKey::Vote(proposal_id, voter.clone());
     if env.storage().persistent().has(&vote_key) {
         panic!("already voted");
     }
-    
+
     // Record vote
     let vote = Vote {
         voter: voter.clone(),
@@ -171,45 +165,45 @@ pub fn cast_vote(
         weight,
         voted_at: now,
     };
-    
+
     env.storage().persistent().set(&vote_key, &vote);
-    
+
     // Update proposal vote counts
     match vote_type {
         VoteType::For => proposal.votes_for += weight,
         VoteType::Against => proposal.votes_against += weight,
         VoteType::Abstain => proposal.votes_abstain += weight,
     }
-    
+
     env.storage().persistent().set(&proposal_key, &proposal);
 }
 
-pub fn execute_proposal(env: Env, caller: Address, proposal_id: u32) -> bool {
+pub fn execute_proposal(env: Env, _caller: Address, proposal_id: u32) -> bool {
     let proposal_key = GovernanceKey::Proposal(proposal_id);
     let mut proposal: Proposal = env
         .storage()
         .persistent()
         .get(&proposal_key)
         .unwrap_or_else(|| panic!("proposal not found"));
-    
+
     if proposal.status != ProposalStatus::Active {
         panic!("proposal not active");
     }
-    
+
     let now = env.ledger().timestamp();
     if now <= proposal.voting_ends_at {
         panic!("voting period not ended");
     }
-    
+
     let total_votes = proposal.votes_for + proposal.votes_against + proposal.votes_abstain;
-    
+
     // Check quorum
     if total_votes < proposal.quorum {
         proposal.status = ProposalStatus::Rejected;
         env.storage().persistent().set(&proposal_key, &proposal);
         return false;
     }
-    
+
     // Check threshold (percentage of non-abstain votes)
     let non_abstain = proposal.votes_for + proposal.votes_against;
     if non_abstain == 0 {
@@ -217,39 +211,39 @@ pub fn execute_proposal(env: Env, caller: Address, proposal_id: u32) -> bool {
         env.storage().persistent().set(&proposal_key, &proposal);
         return false;
     }
-    
+
     let for_percentage = (proposal.votes_for * 100) / non_abstain;
-    
+
     if for_percentage >= proposal.threshold {
         proposal.status = ProposalStatus::Executed;
         proposal.executed_at = Some(now);
     } else {
         proposal.status = ProposalStatus::Rejected;
     }
-    
+
     env.storage().persistent().set(&proposal_key, &proposal);
-    
+
     proposal.status == ProposalStatus::Executed
 }
 
 pub fn cancel_proposal(env: Env, proposer: Address, proposal_id: u32) {
     proposer.require_auth();
-    
+
     let proposal_key = GovernanceKey::Proposal(proposal_id);
     let mut proposal: Proposal = env
         .storage()
         .persistent()
         .get(&proposal_key)
         .unwrap_or_else(|| panic!("proposal not found"));
-    
+
     if proposal.proposer != proposer {
         panic!("not proposer");
     }
-    
+
     if proposal.status != ProposalStatus::Active {
         panic!("proposal not active");
     }
-    
+
     proposal.status = ProposalStatus::Cancelled;
     env.storage().persistent().set(&proposal_key, &proposal);
 }
@@ -272,7 +266,7 @@ pub fn get_active_proposals(env: Env) -> Vec<Proposal> {
         .persistent()
         .get(&GovernanceKey::ProposalCount)
         .unwrap_or(0);
-    
+
     let mut active = Vec::new(&env);
     for i in 1..=count {
         if let Some(proposal) = get_proposal(env.clone(), i) {
@@ -281,6 +275,6 @@ pub fn get_active_proposals(env: Env) -> Vec<Proposal> {
             }
         }
     }
-    
+
     active
 }

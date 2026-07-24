@@ -1,4 +1,5 @@
 #![cfg(test)]
+#![allow(deprecated)]
 
 use crate::multisig::{MultisigAction, MultisigProposalStatus};
 use crate::{TaskManagerContract, TaskManagerContractClient};
@@ -8,6 +9,7 @@ use soroban_sdk::{Address, Env, String, Vec};
 
 // ── Shared setup ───────────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 struct Ctx {
     client: TaskManagerContractClient<'static>,
     contract_id: Address,

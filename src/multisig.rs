@@ -2,42 +2,42 @@ use soroban_sdk::{contracttype, Address, Env, String, Vec};
 
 use crate::DataKey;
 
-/// On-chain multisig proposal, approval-voting, and execution ledger.
-///
-/// This module governs *admin* transactions — parameter changes and treasury
-/// fund movements — and is deliberately separate from `governance`, which
-/// implements reputation-weighted community voting over free-form proposals.
-/// The two differ in every meaningful dimension:
-///
-///   - `governance` : anyone with enough reputation may propose/vote, votes are
-///                    weighted, outcomes are advisory (no on-chain effect).
-///   - `multisig`   : only registered signers may propose/approve, each signer
-///                    counts once, and reaching the threshold *performs* the
-///                    encoded action against contract state or the treasury.
-///
-/// Status workflow:
-///
-/// ```text
-///   Pending ──(threshold reached)──> Approved ──(execute)──> Executed
-///      │                                 │
-///      └────────────(cancel)─────────────┴──> Cancelled
-/// ```
-///
-/// Security properties:
-///   - The approval threshold is **snapshotted at proposal creation**, so
-///     rotating the signer set cannot retroactively make a live proposal
-///     easier to pass.
-///   - Approvals are **re-validated against the current signer set** at
-///     execution time, so an approval from a since-removed signer stops
-///     counting.
-///   - Each signer may approve a given proposal at most once.
-///   - Proposals expire after `proposal_ttl` seconds and can no longer be
-///     approved or executed, bounding the window in which a stale approval
-///     set stays actionable.
-///
-/// Execution is atomic: if the encoded action traps (e.g. an underfunded
-/// treasury transfer), the host transaction reverts, including the approval
-/// that triggered it. The signer may re-approve once the cause is fixed.
+// On-chain multisig proposal, approval-voting, and execution ledger.
+//
+// This module governs *admin* transactions — parameter changes and treasury
+// fund movements — and is deliberately separate from `governance`, which
+// implements reputation-weighted community voting over free-form proposals.
+// The two differ in every meaningful dimension:
+//
+//   - `governance` : anyone with enough reputation may propose/vote, votes are
+//                    weighted, outcomes are advisory (no on-chain effect).
+//   - `multisig`   : only registered signers may propose/approve, each signer
+//                    counts once, and reaching the threshold *performs* the
+//                    encoded action against contract state or the treasury.
+//
+// Status workflow:
+//
+// ```text
+//   Pending ──(threshold reached)──> Approved ──(execute)──> Executed
+//      │                                 │
+//      └────────────(cancel)─────────────┴──> Cancelled
+// ```
+//
+// Security properties:
+//   - The approval threshold is **snapshotted at proposal creation**, so
+//     rotating the signer set cannot retroactively make a live proposal
+//     easier to pass.
+//   - Approvals are **re-validated against the current signer set** at
+//     execution time, so an approval from a since-removed signer stops
+//     counting.
+//   - Each signer may approve a given proposal at most once.
+//   - Proposals expire after `proposal_ttl` seconds and can no longer be
+//     approved or executed, bounding the window in which a stale approval
+//     set stays actionable.
+//
+// Execution is atomic: if the encoded action traps (e.g. an underfunded
+// treasury transfer), the host transaction reverts, including the approval
+// that triggered it. The signer may re-approve once the cause is fixed.
 
 // ============================================================================
 // Types

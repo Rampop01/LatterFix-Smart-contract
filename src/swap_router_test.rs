@@ -1,4 +1,5 @@
 #![cfg(test)]
+#![allow(deprecated)]
 
 use crate::swap_router::{ConversionOutcome, SwapRoute};
 use crate::{TaskManagerContract, TaskManagerContractClient};
@@ -19,7 +20,9 @@ pub struct MockPool;
 #[contractimpl]
 impl MockPool {
     pub fn init(env: Env, rate_bps: i128) {
-        env.storage().instance().set(&symbol_short!("rate"), &rate_bps);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("rate"), &rate_bps);
     }
 
     pub fn swap(
@@ -30,7 +33,11 @@ impl MockPool {
         token_out: Address,
         to: Address,
     ) -> i128 {
-        let rate: i128 = env.storage().instance().get(&symbol_short!("rate")).unwrap_or(10_000);
+        let rate: i128 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("rate"))
+            .unwrap_or(10_000);
         let amount_out = amount_in * rate / 10_000;
 
         if amount_out < min_amount_out {
@@ -60,7 +67,9 @@ pub struct MockOracle;
 #[contractimpl]
 impl MockOracle {
     pub fn set_price(env: Env, asset: Address, price: i128) {
-        env.storage().instance().set(&MockOracleKey::Price(asset), &price);
+        env.storage()
+            .instance()
+            .set(&MockOracleKey::Price(asset), &price);
     }
 
     pub fn price(env: Env, asset: Address) -> Option<i128> {
@@ -72,7 +81,14 @@ impl MockOracle {
 
 const ONE: i128 = 10_000_000; // oracle price scale, 10^ORACLE_PRICE_DECIMALS
 
-fn setup(env: &Env) -> (TaskManagerContractClient<'static>, Address, Address, Address) {
+fn setup(
+    env: &Env,
+) -> (
+    TaskManagerContractClient<'static>,
+    Address,
+    Address,
+    Address,
+) {
     let contract_id = env.register_contract(None, TaskManagerContract);
     let client = TaskManagerContractClient::new(env, &contract_id);
 
@@ -189,7 +205,8 @@ fn test_multi_hop_swap_success() {
     let route = SwapRoute { path, pools };
 
     // 1000 * 0.98 = 980; 980 * 0.98 = 960.4 -> 960 (integer division)
-    let outcome = client.convert_incoming_deposit(&sender, &token_in, &1_000, &route, &Some(500u32));
+    let outcome =
+        client.convert_incoming_deposit(&sender, &token_in, &1_000, &route, &Some(500u32));
 
     match outcome {
         ConversionOutcome::Converted(token_out, amount_out) => {
@@ -235,7 +252,11 @@ fn test_refund_on_unresolved_route() {
     assert!(matches!(outcome, ConversionOutcome::Refunded(_)));
 
     let token_in_client = soroban_sdk::token::Client::new(&env, &token_in);
-    assert_eq!(token_in_client.balance(&sender), 1_000, "sender funds must never be pulled");
+    assert_eq!(
+        token_in_client.balance(&sender),
+        1_000,
+        "sender funds must never be pulled"
+    );
 
     let stats = client.get_swap_router_stats();
     assert_eq!(stats.total_refunds, 1);
@@ -332,10 +353,16 @@ fn test_only_admin_can_configure_router() {
     let stablecoin = new_token(&env);
 
     let result = client.try_add_approved_stablecoin(&not_admin, &stablecoin);
-    assert!(result.is_err(), "non-admin must not be able to approve stablecoins");
+    assert!(
+        result.is_err(),
+        "non-admin must not be able to approve stablecoins"
+    );
 
     let result = client.try_configure_swap_router(&not_admin, &oracle_id, &4u32, &500u32);
-    assert!(result.is_err(), "non-admin must not be able to reconfigure the router");
+    assert!(
+        result.is_err(),
+        "non-admin must not be able to reconfigure the router"
+    );
 }
 
 // ── Test 7: withdrawing a converted vault balance pays out the stablecoin ──

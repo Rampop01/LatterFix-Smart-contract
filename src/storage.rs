@@ -1,17 +1,16 @@
+//! Storage helper module for the LatterFix TaskManager contract.
+//!
+//! Centralises all persistent storage keys, TTL management, and statistic
+//! tracking so that every module reads/writes through a single typed interface.
+//!
+//! Storage tiers used in this contract:
+//!   - `persistent()` — survives ledger archival; requires TTL extension
+//!   - `temporary()` — cheap, auto-expires after TTL; used for nonces/sessions
+//!   - `instance()`  — scoped to the contract instance; used for admin config
+
 use soroban_sdk::{contracttype, Env, String, Vec};
 
-/// Storage helper module for the LatterFix TaskManager contract.
-///
-/// Centralises all persistent storage keys, TTL management, and statistic
-/// tracking so that every module reads/writes through a single typed interface.
-///
-/// Storage tiers used in this contract:
-///   - `persistent()` — survives ledger archival; requires TTL extension
-///   - `temporary()` — cheap, auto-expires after TTL; used for nonces/sessions
-///   - `instance()`  — scoped to the contract instance; used for admin config
-
 // ── TTL Constants ──────────────────────────────────────────────────────────
-
 /// Maximum persistent TTL: ~31 days at 5-second ledger close time.
 pub const MAX_PERSISTENT_TTL: u32 = 5_200_000;
 
@@ -49,12 +48,8 @@ pub fn calculate_ttl(_env: &Env, is_permanent: bool) -> u32 {
 /// * `key`       — the storage key to extend
 /// * `threshold` — minimum remaining ledgers before extension triggers
 /// * `extend_to` — target TTL to extend to (in ledgers)
-pub fn extend_persistent_ttl<K>(
-    env: &Env,
-    key: &K,
-    threshold: u32,
-    extend_to: u32,
-) where
+pub fn extend_persistent_ttl<K>(env: &Env, key: &K, threshold: u32, extend_to: u32)
+where
     K: soroban_sdk::IntoVal<Env, soroban_sdk::Val>,
 {
     env.storage()
@@ -106,7 +101,7 @@ pub fn add_category(env: &Env, name: String, description: String) -> u32 {
         .get(&StorageKey::Categories)
         .unwrap_or_else(|| Vec::new(env));
 
-    let id = (categories.len() as u32) + 1;
+    let id = (categories.len()) + 1;
 
     categories.push_back(Category {
         id,

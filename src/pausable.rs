@@ -1,5 +1,5 @@
-use soroban_sdk::{contracttype, Address, Env};
 use crate::DataKey;
+use soroban_sdk::{contracttype, Address, Env};
 
 /// Granular pause/unpause system for the LatterFix contract.
 ///
