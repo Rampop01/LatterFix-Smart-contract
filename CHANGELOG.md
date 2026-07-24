@@ -20,6 +20,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **`multisig_test.rs`** — 24 tests covering the proposal lifecycle: configuration validation, threshold execution, treasury movements, signer rotation, stale-approval discounting, threshold snapshotting, cancellation, and expiry.
 
 ### Added
+- **`zkp_attestation.rs`** — Zero-Knowledge Proof (ZKP) identity attestation module (issue #27). Lets employees prove eligibility / KYC status during payroll without revealing identity data on-chain:
+  - Admin-gated verification-key registry keyed by circuit id, with structural (Groth16 `IC` arity, BLS12-381 point encoding) validation of proof payloads.
+  - A `verify_groth16_pairing` host-binding wrapper isolating the pairing-equation seam, ready to delegate to the BLS12-381 pairing host function (CAP-0059) on Protocol 22.
+  - Nullifier tracking with a spent-nullifier set to reject ZK proof replays, plus a `H(nullifier || public_signals)` commitment binding that prevents lifting a valid proof onto a different nullifier.
+  - `test.rs` — 9 unit tests covering valid attestation, malformed/zero proofs, public-signal arity mismatch, commitment tampering, nullifier replay, and admin-only key registration.
+
 - **`events.rs`** — All 22 event emitter functions now include `env.ledger().timestamp()` in their data tuple, enabling precise off-chain temporal indexing via Soroban RPC `getEvents`. Two new platform-level events added:
   - `emit_fee_updated` — fires when admin changes platform fee basis points
   - `emit_contract_initialized` — fires once on first `initialize()` call

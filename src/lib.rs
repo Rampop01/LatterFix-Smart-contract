@@ -13,6 +13,7 @@ pub mod swap_router;
 pub mod user_profile;
 pub mod vault;
 pub mod merkle;
+pub mod zkp_attestation;
 
 #[cfg(test)]
 mod test;

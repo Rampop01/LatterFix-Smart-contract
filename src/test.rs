@@ -815,3 +815,305 @@ fn test_twap_edge_case_prices() {
     assert!(twap_result.price >= 0);
     assert_eq!(twap_result.observation_count, 2);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ZKP Identity Attestation Module Tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+use crate::zkp_attestation::*;
+use soroban_sdk::{Bytes, BytesN};
+
+// ── Fixtures ───────────────────────────────────────────────────────────────
+
+/// A well-formed Groth16 proof payload (non-zero points of the expected size).
+fn zk_proof(env: &Env) -> Groth16Proof {
+    Groth16Proof {
+        a: Bytes::from_array(env, &[1u8; 96]),
+        b: Bytes::from_array(env, &[2u8; 192]),
+        c: Bytes::from_array(env, &[3u8; 96]),
+    }
+}
+
+/// `n + 1` IC points, as Groth16 requires for `n` public signals.
+fn zk_ic(env: &Env, n: u32) -> Vec<Bytes> {
+    let mut ic = Vec::new(env);
+    for i in 0..(n + 1) {
+        ic.push_back(Bytes::from_array(env, &[(i as u8) + 1; 96]));
+    }
+    ic
+}
+
+/// `n` public signals.
+fn zk_signals(env: &Env, n: u32) -> Vec<BytesN<32>> {
+    let mut signals = Vec::new(env);
+    for i in 0..n {
+        signals.push_back(BytesN::from_array(env, &[(i as u8) + 10; 32]));
+    }
+    signals
+}
+
+/// Initialize the module and register a VK for a 2-signal circuit.
+fn zk_setup(env: &Env) -> (Address, String) {
+    let admin = Address::generate(env);
+    initialize(env.clone(), admin.clone());
+    let circuit_id = String::from_str(env, "kyc-tier-1");
+    register_verification_key(
+        env.clone(),
+        admin.clone(),
+        circuit_id.clone(),
+        String::from_str(env, "BLS12-381"),
+        Bytes::from_array(env, &[9u8; 32]),
+        Bytes::from_array(env, &[8u8; 192]),
+        Bytes::from_array(env, &[7u8; 192]),
+        zk_ic(env, 2),
+    );
+    (admin, circuit_id)
+}
+
+/// Build a valid attestation (2 signals) with a correctly bound commitment.
+fn zk_attestation(
+    env: &Env,
+    circuit_id: &String,
+    subject: &Address,
+    nullifier: BytesN<32>,
+) -> IdentityAttestation {
+    let signals = zk_signals(env, 2);
+    let commitment =
+        compute_attestation_commitment(env.clone(), nullifier.clone(), signals.clone());
+    IdentityAttestation {
+        circuit_id: circuit_id.clone(),
+        subject: subject.clone(),
+        proof: zk_proof(env),
+        public_signals: signals,
+        nullifier,
+        attestation_commitment: commitment,
+    }
+}
+
+// ── Test: a valid attestation is accepted and recorded ──────────────────────
+
+#[test]
+fn test_zkp_valid_attestation() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, TaskManagerContract);
+
+    env.as_contract(&contract_id, || {
+        let (_admin, circuit_id) = zk_setup(&env);
+        let subject = Address::generate(&env);
+        let nullifier = BytesN::from_array(&env, &[42u8; 32]);
+
+        assert!(!is_nullifier_used(env.clone(), nullifier.clone()));
+
+        let attestation = zk_attestation(&env, &circuit_id, &subject, nullifier.clone());
+        let receipt = verify_attestation(env.clone(), attestation).unwrap();
+
+        assert_eq!(receipt.subject, subject);
+        assert_eq!(receipt.circuit_id, circuit_id);
+        assert!(is_nullifier_used(env.clone(), nullifier.clone()));
+        assert_eq!(attestation_count(env.clone()), 1);
+        assert!(get_attestation(env.clone(), nullifier).is_some());
+    });
+}
+
+// ── Test: replaying a spent nullifier is rejected ───────────────────────────
+
+#[test]
+fn test_zkp_rejects_replayed_nullifier() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, TaskManagerContract);
+
+    env.as_contract(&contract_id, || {
+        let (_admin, circuit_id) = zk_setup(&env);
+        let subject_a = Address::generate(&env);
+        let subject_b = Address::generate(&env);
+        let nullifier = BytesN::from_array(&env, &[7u8; 32]);
+
+        let first = zk_attestation(&env, &circuit_id, &subject_a, nullifier.clone());
+        assert!(verify_attestation(env.clone(), first).is_ok());
+
+        // Same nullifier a second time — even for a different subject with an
+        // otherwise valid payload: replay protection keys on the nullifier.
+        let replay = zk_attestation(&env, &circuit_id, &subject_b, nullifier);
+        assert_eq!(
+            verify_attestation(env.clone(), replay),
+            Err(AttestationError::NullifierAlreadyUsed)
+        );
+        // The count must not have advanced.
+        assert_eq!(attestation_count(env.clone()), 1);
+    });
+}
+
+// ── Test: unregistered circuit is rejected ──────────────────────────────────
+
+#[test]
+fn test_zkp_rejects_unregistered_circuit() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, TaskManagerContract);
+
+    env.as_contract(&contract_id, || {
+        let (_admin, _circuit_id) = zk_setup(&env);
+        let subject = Address::generate(&env);
+        let nullifier = BytesN::from_array(&env, &[1u8; 32]);
+
+        let unknown = String::from_str(&env, "unknown-circuit");
+        let attestation = zk_attestation(&env, &unknown, &subject, nullifier);
+        assert_eq!(
+            verify_attestation(env.clone(), attestation),
+            Err(AttestationError::CircuitNotRegistered)
+        );
+    });
+}
+
+// ── Test: malformed proof (zero / wrong-length points) is rejected ──────────
+
+#[test]
+fn test_zkp_rejects_malformed_proof() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, TaskManagerContract);
+
+    env.as_contract(&contract_id, || {
+        let (_admin, circuit_id) = zk_setup(&env);
+        let subject_a = Address::generate(&env);
+        let subject_b = Address::generate(&env);
+
+        // All-zero G1 point `A` — never a valid proof element.
+        let nullifier_a = BytesN::from_array(&env, &[5u8; 32]);
+        let mut attestation = zk_attestation(&env, &circuit_id, &subject_a, nullifier_a);
+        attestation.proof.a = Bytes::from_array(&env, &[0u8; 96]);
+        assert_eq!(
+            verify_attestation(env.clone(), attestation),
+            Err(AttestationError::MalformedProof)
+        );
+
+        // Wrong-length G2 point `B`.
+        let nullifier_b = BytesN::from_array(&env, &[6u8; 32]);
+        let mut bad_len = zk_attestation(&env, &circuit_id, &subject_b, nullifier_b);
+        bad_len.proof.b = Bytes::from_array(&env, &[2u8; 64]);
+        assert_eq!(
+            verify_attestation(env.clone(), bad_len),
+            Err(AttestationError::MalformedProof)
+        );
+    });
+}
+
+// ── Test: public-signal arity mismatch is rejected ──────────────────────────
+
+#[test]
+fn test_zkp_rejects_public_signal_mismatch() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, TaskManagerContract);
+
+    env.as_contract(&contract_id, || {
+        let (_admin, circuit_id) = zk_setup(&env); // VK expects 2 signals
+        let subject = Address::generate(&env);
+        let nullifier = BytesN::from_array(&env, &[9u8; 32]);
+
+        // Present 3 signals against a 2-signal VK (IC arity is 3).
+        let signals = zk_signals(&env, 3);
+        let commitment =
+            compute_attestation_commitment(env.clone(), nullifier.clone(), signals.clone());
+        let attestation = IdentityAttestation {
+            circuit_id,
+            subject,
+            proof: zk_proof(&env),
+            public_signals: signals,
+            nullifier,
+            attestation_commitment: commitment,
+        };
+        assert_eq!(
+            verify_attestation(env.clone(), attestation),
+            Err(AttestationError::PublicSignalMismatch)
+        );
+    });
+}
+
+// ── Test: a tampered commitment is rejected ─────────────────────────────────
+
+#[test]
+fn test_zkp_rejects_commitment_mismatch() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, TaskManagerContract);
+
+    env.as_contract(&contract_id, || {
+        let (_admin, circuit_id) = zk_setup(&env);
+        let subject = Address::generate(&env);
+        let nullifier = BytesN::from_array(&env, &[3u8; 32]);
+
+        let mut attestation = zk_attestation(&env, &circuit_id, &subject, nullifier);
+        // Overwrite the correctly-derived commitment with a bogus one.
+        attestation.attestation_commitment = BytesN::from_array(&env, &[0xAAu8; 32]);
+        assert_eq!(
+            verify_attestation(env.clone(), attestation),
+            Err(AttestationError::CommitmentMismatch)
+        );
+    });
+}
+
+// ── Test: a valid proof cannot be lifted onto a different nullifier ──────────
+
+#[test]
+fn test_zkp_nullifier_binding_blocks_proof_lifting() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, TaskManagerContract);
+
+    env.as_contract(&contract_id, || {
+        let (_admin, circuit_id) = zk_setup(&env);
+        let subject = Address::generate(&env);
+
+        // Commitment is bound to nullifier A...
+        let nullifier_a = BytesN::from_array(&env, &[0x11u8; 32]);
+        let mut attestation = zk_attestation(&env, &circuit_id, &subject, nullifier_a);
+        // ...but the attacker swaps in a fresh, unspent nullifier B without
+        // recomputing the commitment, hoping to mint a new attestation.
+        attestation.nullifier = BytesN::from_array(&env, &[0x22u8; 32]);
+        assert_eq!(
+            verify_attestation(env.clone(), attestation),
+            Err(AttestationError::CommitmentMismatch)
+        );
+    });
+}
+
+// ── Test: only the admin may register verification keys ─────────────────────
+
+#[test]
+#[should_panic(expected = "only admin")]
+fn test_zkp_register_vk_requires_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, TaskManagerContract);
+
+    env.as_contract(&contract_id, || {
+        let (_admin, _circuit_id) = zk_setup(&env);
+        let impostor = Address::generate(&env);
+        register_verification_key(
+            env.clone(),
+            impostor,
+            String::from_str(&env, "kyc-tier-2"),
+            String::from_str(&env, "BLS12-381"),
+            Bytes::from_array(&env, &[9u8; 32]),
+            Bytes::from_array(&env, &[8u8; 192]),
+            Bytes::from_array(&env, &[7u8; 192]),
+            zk_ic(&env, 2),
+        );
+    });
+}
+
+// ── Test: the commitment derivation is deterministic ────────────────────────
+
+#[test]
+fn test_zkp_commitment_is_deterministic() {
+    let env = Env::default();
+    let nullifier = BytesN::from_array(&env, &[4u8; 32]);
+    let signals = zk_signals(&env, 2);
+
+    let first = compute_attestation_commitment(env.clone(), nullifier.clone(), signals.clone());
+    let second = compute_attestation_commitment(env.clone(), nullifier, signals);
+    assert_eq!(first, second);
+}
