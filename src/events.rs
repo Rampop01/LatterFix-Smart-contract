@@ -137,6 +137,72 @@ pub fn emit_proposal_executed(env: &Env, proposal_id: u32, passed: bool) {
     );
 }
 
+// ── Multisig Events ────────────────────────────────────────────────────────
+//
+// Emitted by the admin multisig ledger (`multisig.rs`). Kept distinct from the
+// `prop_*` governance topics above so off-chain indexers can separate
+// community proposals from privileged admin transactions.
+
+pub fn emit_multisig_configured(
+    env: &Env,
+    admin: Address,
+    signer_count: u32,
+    threshold: u32,
+) {
+    env.events().publish(
+        (symbol_short!("ms_cfg"), admin),
+        (signer_count, threshold, env.ledger().timestamp()),
+    );
+}
+
+pub fn emit_multisig_proposed(
+    env: &Env,
+    proposal_id: u32,
+    proposer: Address,
+    description: String,
+    threshold: u32,
+) {
+    env.events().publish(
+        (symbol_short!("ms_prop"), proposal_id),
+        (proposer, description, threshold, env.ledger().timestamp()),
+    );
+}
+
+pub fn emit_multisig_approved(
+    env: &Env,
+    proposal_id: u32,
+    signer: Address,
+    approvals: u32,
+    threshold: u32,
+) {
+    env.events().publish(
+        (symbol_short!("ms_vote"), (proposal_id, signer)),
+        (approvals, threshold, env.ledger().timestamp()),
+    );
+}
+
+pub fn emit_multisig_executed(
+    env: &Env,
+    proposal_id: u32,
+    executor: Address,
+) {
+    env.events().publish(
+        (symbol_short!("ms_exec"), proposal_id),
+        (executor, env.ledger().timestamp()),
+    );
+}
+
+pub fn emit_multisig_cancelled(
+    env: &Env,
+    proposal_id: u32,
+    caller: Address,
+) {
+    env.events().publish(
+        (symbol_short!("ms_cancl"), proposal_id),
+        (caller, env.ledger().timestamp()),
+    );
+}
+
 // ── Access Control Events ──────────────────────────────────────────────────
 
 pub fn emit_role_granted(env: &Env, user: Address, role: String, granted_by: Address) {
