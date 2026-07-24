@@ -13,7 +13,6 @@ pub mod twap_oracle;
 pub mod swap_router;
 pub mod user_profile;
 pub mod vault;
-pub mod merkle;
 pub mod zkp_attestation;
 
 #[cfg(kani)]

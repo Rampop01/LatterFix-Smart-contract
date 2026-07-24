@@ -934,7 +934,7 @@ fn test_twap_edge_case_prices() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 use crate::zkp_attestation::*;
-use soroban_sdk::{Bytes, BytesN};
+use soroban_sdk::Bytes;
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
