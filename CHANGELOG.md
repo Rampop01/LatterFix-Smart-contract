@@ -5,7 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased] — 2026-07-13
+## [Unreleased] — 2026-07-23
+
+### Added
+- **`multisig.rs`** — On-chain multisig proposal, approval-voting, and execution ledger for privileged admin transactions (#043). Distinct from `governance.rs`, which remains reputation-weighted community voting with no on-chain effect.
+  - Status workflow: `Pending → Approved → Executed`, with `Cancelled` reachable from either non-terminal state.
+  - `MultisigAction` encodes what a proposal performs: `SetPlatformFee`, `SetFeeRecipient`, `SetTokenContract`, `TreasuryTransfer`, and `SetSigners` (signer-set rotation).
+  - Approval threshold is snapshotted at proposal creation, so rotating the signer set cannot retroactively lower the bar for a live proposal.
+  - Approvals are re-validated against the current signer set at execution, so an approval from a since-removed signer stops counting.
+  - Proposals expire after a configurable TTL (default 7 days); one approval per signer; actions are validated at proposal time so signers never spend approvals on a proposal that could only trap at execution.
+  - New endpoints: `configure_multisig`, `multisig_propose`, `vote_proposal`, `multisig_execute_proposal`, `multisig_cancel_proposal`, plus views `get_multisig_proposal`, `get_multisig_config`, `get_multisig_approval_count`, `has_approved_proposal`, `get_pending_multisig_proposals`, `is_multisig_signer`.
+  - The executor is exported as `multisig_execute_proposal` rather than `execute_proposal`, since the latter is already bound to `governance::execute_proposal`; renaming it would break existing clients.
+- **`events.rs`** — Five multisig event emitters on dedicated `ms_*` topics, so off-chain indexers can separate privileged admin transactions from community proposals: `ms_cfg`, `ms_prop`, `ms_vote`, `ms_exec`, `ms_cancl`.
+- **`multisig_test.rs`** — 24 tests covering the proposal lifecycle: configuration validation, threshold execution, treasury movements, signer rotation, stale-approval discounting, threshold snapshotting, cancellation, and expiry.
 
 ### Added
 - **`events.rs`** — All 22 event emitter functions now include `env.ledger().timestamp()` in their data tuple, enabling precise off-chain temporal indexing via Soroban RPC `getEvents`. Two new platform-level events added:

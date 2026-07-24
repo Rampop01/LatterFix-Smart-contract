@@ -4,6 +4,7 @@ pub mod access_control;
 pub mod escrow;
 pub mod events;
 pub mod governance;
+pub mod multisig;
 pub mod pausable;
 pub mod reputation;
 pub mod storage;
@@ -15,6 +16,8 @@ pub mod merkle;
 
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod multisig_test;
 #[cfg(test)]
 mod swap_router_test;
 
@@ -754,6 +757,121 @@ impl TaskManagerContract {
     
     pub fn get_active_proposals(env: Env) -> Vec<governance::Proposal> {
         governance::get_active_proposals(env)
+    }
+
+    // ========================================================================
+    // Admin Multisig
+    // ========================================================================
+    //
+    // Note: these endpoints are prefixed `multisig_*` rather than taking the
+    // bare `create_proposal` / `execute_proposal` names, which are already
+    // exported above by the reputation-weighted governance module. The
+    // approval-vote entry point keeps the unprefixed `vote_proposal` name,
+    // which was free.
+
+    /// Install the multisig signer set and approval threshold. Admin-only.
+    pub fn configure_multisig(
+        env: Env,
+        admin: Address,
+        signers: Vec<Address>,
+        threshold: u32,
+        proposal_ttl: Option<u64>,
+        auto_execute: Option<bool>,
+    ) {
+        let signer_count = signers.len();
+        multisig::configure(
+            env.clone(),
+            admin.clone(),
+            signers,
+            threshold,
+            proposal_ttl,
+            auto_execute,
+        );
+        events::emit_multisig_configured(&env, admin, signer_count, threshold);
+    }
+
+    /// Propose an admin parameter change or treasury movement. Signer-only.
+    pub fn multisig_propose(
+        env: Env,
+        proposer: Address,
+        description: String,
+        action: multisig::MultisigAction,
+    ) -> u32 {
+        let proposal_id = multisig::propose(
+            env.clone(),
+            proposer.clone(),
+            description.clone(),
+            action,
+        );
+
+        let threshold = multisig::get_config(&env).threshold;
+        events::emit_multisig_proposed(&env, proposal_id, proposer, description, threshold);
+
+        proposal_id
+    }
+
+    /// Record an approval vote. Executes the proposal in the same call when
+    /// this vote reaches the threshold and `auto_execute` is enabled.
+    pub fn vote_proposal(
+        env: Env,
+        signer: Address,
+        proposal_id: u32,
+    ) -> multisig::MultisigProposalStatus {
+        let status = multisig::vote_proposal(env.clone(), signer.clone(), proposal_id);
+
+        let approvals = multisig::get_approval_count(&env, proposal_id);
+        let threshold = multisig::get_config(&env).threshold;
+        events::emit_multisig_approved(&env, proposal_id, signer.clone(), approvals, threshold);
+
+        if status == multisig::MultisigProposalStatus::Executed {
+            events::emit_multisig_executed(&env, proposal_id, signer);
+        }
+
+        status
+    }
+
+    /// Execute an already-approved proposal. Signer-only.
+    pub fn multisig_execute_proposal(
+        env: Env,
+        caller: Address,
+        proposal_id: u32,
+    ) -> multisig::MultisigProposalStatus {
+        let status = multisig::execute_proposal(env.clone(), caller.clone(), proposal_id);
+        events::emit_multisig_executed(&env, proposal_id, caller);
+        status
+    }
+
+    /// Cancel a proposal before execution. Proposer or admin only.
+    pub fn multisig_cancel_proposal(env: Env, caller: Address, proposal_id: u32) {
+        multisig::cancel_proposal(env.clone(), caller.clone(), proposal_id);
+        events::emit_multisig_cancelled(&env, proposal_id, caller);
+    }
+
+    pub fn get_multisig_proposal(
+        env: Env,
+        proposal_id: u32,
+    ) -> Option<multisig::MultisigProposal> {
+        multisig::get_proposal(&env, proposal_id)
+    }
+
+    pub fn get_multisig_config(env: Env) -> multisig::MultisigConfig {
+        multisig::get_config(&env)
+    }
+
+    pub fn get_multisig_approval_count(env: Env, proposal_id: u32) -> u32 {
+        multisig::get_approval_count(&env, proposal_id)
+    }
+
+    pub fn has_approved_proposal(env: Env, proposal_id: u32, signer: Address) -> bool {
+        multisig::has_approved(&env, proposal_id, &signer)
+    }
+
+    pub fn get_pending_multisig_proposals(env: Env) -> Vec<multisig::MultisigProposal> {
+        multisig::get_pending_proposals(&env)
+    }
+
+    pub fn is_multisig_signer(env: Env, who: Address) -> bool {
+        multisig::is_signer(&env, &who)
     }
 
     // ========================================================================
