@@ -9,8 +9,9 @@ pub mod multisig;
 pub mod pausable;
 pub mod reputation;
 pub mod storage;
-pub mod twap_oracle;
 pub mod swap_router;
+pub mod twap_oracle;
+pub mod upgrade;
 pub mod user_profile;
 pub mod vault;
 pub mod zkp_attestation;
@@ -24,6 +25,8 @@ mod multisig_test;
 mod swap_router_test;
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod upgrade_test;
 
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Vec};
 
@@ -820,12 +823,8 @@ impl TaskManagerContract {
         description: String,
         action: multisig::MultisigAction,
     ) -> u32 {
-        let proposal_id = multisig::propose(
-            env.clone(),
-            proposer.clone(),
-            description.clone(),
-            action,
-        );
+        let proposal_id =
+            multisig::propose(env.clone(), proposer.clone(), description.clone(), action);
 
         let threshold = multisig::get_config(&env).threshold;
         events::emit_multisig_proposed(&env, proposal_id, proposer, description, threshold);
@@ -870,10 +869,7 @@ impl TaskManagerContract {
         events::emit_multisig_cancelled(&env, proposal_id, caller);
     }
 
-    pub fn get_multisig_proposal(
-        env: Env,
-        proposal_id: u32,
-    ) -> Option<multisig::MultisigProposal> {
+    pub fn get_multisig_proposal(env: Env, proposal_id: u32) -> Option<multisig::MultisigProposal> {
         multisig::get_proposal(&env, proposal_id)
     }
 
@@ -1133,6 +1129,66 @@ impl TaskManagerContract {
         claimant.require_auth();
         vault::claim_payroll(&env, claimant, token, payroll_id, amount, proof);
     }
+
+    // ========================================================================
+    // Upgrade Timelock & Rollback Guard
+    // ========================================================================
+
+    /// Read the currently configured upgrade timelock delay, in seconds.
+    pub fn get_upgrade_timelock(env: Env) -> u64 {
+        upgrade::get_timelock_seconds(&env)
+    }
+
+    /// Reconfigure the upgrade timelock delay. Admin-only; rejects values
+    /// below `upgrade::MIN_TIMELOCK_SECONDS`.
+    pub fn set_upgrade_timelock(env: Env, admin: Address, seconds: u64) {
+        let old_seconds = upgrade::get_timelock_seconds(&env);
+        let new_seconds = upgrade::set_timelock_seconds(env.clone(), admin.clone(), seconds);
+        events::emit_upgrade_timelock_updated(&env, old_seconds, new_seconds, admin);
+    }
+
+    /// Propose upgrading the contract to `new_wasm_hash`. Admin-only. Starts
+    /// the mandatory timelock window; `execute_upgrade` will reject any
+    /// attempt to apply the upgrade before `ready_at`.
+    pub fn propose_upgrade(
+        env: Env,
+        admin: Address,
+        new_wasm_hash: soroban_sdk::BytesN<32>,
+    ) -> upgrade::UpgradeProposal {
+        let proposal = upgrade::propose_upgrade(env.clone(), admin.clone(), new_wasm_hash.clone());
+        events::emit_upgrade_proposed(&env, new_wasm_hash, admin, proposal.ready_at);
+        proposal
+    }
+
+    /// Veto the currently pending upgrade proposal. Callable by the admin or
+    /// any address holding the `Guardian` role during the timelock window.
+    pub fn veto_upgrade(env: Env, guardian: Address) -> upgrade::UpgradeProposal {
+        let proposal = upgrade::veto_upgrade(env.clone(), guardian.clone());
+        events::emit_upgrade_vetoed(&env, proposal.wasm_hash.clone(), guardian);
+        proposal
+    }
+
+    /// Execute the pending upgrade proposal once its timelock has elapsed.
+    /// Admin-only. Reverts if called early, or if the proposal was already
+    /// executed or vetoed.
+    pub fn execute_upgrade(env: Env, admin: Address) -> soroban_sdk::BytesN<32> {
+        let wasm_hash = upgrade::execute_upgrade(env.clone(), admin.clone());
+        events::emit_upgrade_executed(&env, wasm_hash.clone(), admin);
+        wasm_hash
+    }
+
+    /// Current state of the (single) pending/most-recently-resolved upgrade
+    /// proposal, if any has ever been created.
+    pub fn get_pending_upgrade(env: Env) -> Option<upgrade::UpgradeProposal> {
+        upgrade::get_pending_upgrade(&env)
+    }
+
+    /// Append-only log of WASM hashes this contract has actually been
+    /// upgraded to. Used to identify a hash to roll back to via
+    /// `propose_upgrade`.
+    pub fn get_upgrade_history(env: Env) -> Vec<upgrade::UpgradeHistoryEntry> {
+        upgrade::get_upgrade_history(&env)
+    }
 }
 
 // ============================================================================
@@ -1145,6 +1201,7 @@ fn format_role(env: &Env, role: &access_control::Role) -> String {
         access_control::Role::Manager => String::from_str(env, "Manager"),
         access_control::Role::Moderator => String::from_str(env, "Moderator"),
         access_control::Role::Verifier => String::from_str(env, "Verifier"),
+        access_control::Role::Guardian => String::from_str(env, "Guardian"),
     }
 }
 
