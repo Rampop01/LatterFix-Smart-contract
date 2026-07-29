@@ -143,12 +143,7 @@ pub fn emit_proposal_executed(env: &Env, proposal_id: u32, passed: bool) {
 // `prop_*` governance topics above so off-chain indexers can separate
 // community proposals from privileged admin transactions.
 
-pub fn emit_multisig_configured(
-    env: &Env,
-    admin: Address,
-    signer_count: u32,
-    threshold: u32,
-) {
+pub fn emit_multisig_configured(env: &Env, admin: Address, signer_count: u32, threshold: u32) {
     env.events().publish(
         (symbol_short!("ms_cfg"), admin),
         (signer_count, threshold, env.ledger().timestamp()),
@@ -181,22 +176,14 @@ pub fn emit_multisig_approved(
     );
 }
 
-pub fn emit_multisig_executed(
-    env: &Env,
-    proposal_id: u32,
-    executor: Address,
-) {
+pub fn emit_multisig_executed(env: &Env, proposal_id: u32, executor: Address) {
     env.events().publish(
         (symbol_short!("ms_exec"), proposal_id),
         (executor, env.ledger().timestamp()),
     );
 }
 
-pub fn emit_multisig_cancelled(
-    env: &Env,
-    proposal_id: u32,
-    caller: Address,
-) {
+pub fn emit_multisig_cancelled(env: &Env, proposal_id: u32, caller: Address) {
     env.events().publish(
         (symbol_short!("ms_cancl"), proposal_id),
         (caller, env.ledger().timestamp()),
@@ -368,5 +355,45 @@ pub fn emit_vault_claim(env: &Env, claimant: Address, token: Address, amount: i1
     env.events().publish(
         (symbol_short!("vlt_clm"), token),
         (claimant, amount, env.ledger().timestamp()),
+    );
+}
+
+// ── Upgrade Timelock Events ────────────────────────────────────────────────
+
+pub fn emit_upgrade_proposed(
+    env: &Env,
+    wasm_hash: soroban_sdk::BytesN<32>,
+    proposed_by: Address,
+    ready_at: u64,
+) {
+    env.events().publish(
+        (symbol_short!("upg_prop"), proposed_by),
+        (wasm_hash, ready_at, env.ledger().timestamp()),
+    );
+}
+
+pub fn emit_upgrade_executed(env: &Env, wasm_hash: soroban_sdk::BytesN<32>, executed_by: Address) {
+    env.events().publish(
+        (symbol_short!("upg_exec"), executed_by),
+        (wasm_hash, env.ledger().timestamp()),
+    );
+}
+
+pub fn emit_upgrade_vetoed(env: &Env, wasm_hash: soroban_sdk::BytesN<32>, vetoed_by: Address) {
+    env.events().publish(
+        (symbol_short!("upg_veto"), vetoed_by),
+        (wasm_hash, env.ledger().timestamp()),
+    );
+}
+
+pub fn emit_upgrade_timelock_updated(
+    env: &Env,
+    old_seconds: u64,
+    new_seconds: u64,
+    updated_by: Address,
+) {
+    env.events().publish(
+        (symbol_short!("upg_tl"), updated_by),
+        (old_seconds, new_seconds, env.ledger().timestamp()),
     );
 }

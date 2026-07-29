@@ -7,6 +7,11 @@ pub enum Role {
     Manager,
     Moderator,
     Verifier,
+    /// Emergency guardian: authorized to veto a pending contract WASM
+    /// upgrade during its timelock window (see `upgrade.rs`). Deliberately
+    /// separate from `Admin` so upgrade proposals can be checked by a party
+    /// other than the one proposing them.
+    Guardian,
 }
 
 #[contracttype]
