@@ -92,6 +92,27 @@ pub enum DataKey {
 }
 
 // ============================================================================
+// Dispute Split Types
+// ============================================================================
+
+/// A single recipient share in a dispute split.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DisputeSplitRecipient {
+    pub address: Address,
+    /// Percentage in basis points (100 = 1%, 10000 = 100%).
+    pub share_bps: u32,
+}
+
+/// The full split instruction attached to a dispute resolution.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DisputeSplit {
+    /// Ordered list of recipients and their basis-point shares.
+    pub recipients: Vec<DisputeSplitRecipient>,
+}
+
+// ============================================================================
 // Main Contract
 // ============================================================================
 
@@ -562,6 +583,19 @@ impl TaskManagerContract {
         env.storage().instance().set(&DataKey::Task(task_id), &task);
 
         events::emit_dispute_resolved(&env, task_id, creator_refund, assignee_payout);
+    }
+
+    /// Resolve a disputed task by splitting the escrowed funds among multiple
+    /// recipients according to percentage shares.
+    ///
+    /// Delegates to the module-level `resolve_dispute_split` function.
+    pub fn resolve_dispute_split(
+        env: Env,
+        task_id: u32,
+        recipients: Vec<Address>,
+        shares_bps: Vec<u32>,
+    ) {
+        crate::resolve_dispute_split(env, task_id, recipients, shares_bps);
     }
 
     // ========================================================================
@@ -1189,6 +1223,112 @@ impl TaskManagerContract {
     pub fn get_upgrade_history(env: Env) -> Vec<upgrade::UpgradeHistoryEntry> {
         upgrade::get_upgrade_history(&env)
     }
+}
+
+// ============================================================================
+// Dispute Split Resolution (module-level for multisig reuse)
+// ============================================================================
+
+/// Resolve a disputed task by splitting the escrowed funds among multiple
+/// recipients according to percentage shares.
+///
+/// - `task_id`    – must be in `Disputed` status.
+/// - `recipients` – non-empty list of payment recipients.
+/// - `shares_bps` – basis-point share per recipient (must sum to 10000).
+///
+/// Platform fee is deducted from the total before distribution. Each
+/// recipient's final payout is computed proportionally from the
+/// fee-reduced balance.
+pub fn resolve_dispute_split(
+    env: Env,
+    task_id: u32,
+    recipients: Vec<Address>,
+    shares_bps: Vec<u32>,
+) {
+    // ── Basic invariants ────────────────────────────────────────────
+    if recipients.len() == 0 {
+        panic!("recipients list cannot be empty");
+    }
+    if recipients.len() != shares_bps.len() {
+        panic!("recipients and shares must have same length");
+    }
+
+    let mut total_bps: u32 = 0;
+    for i in 0..shares_bps.len() {
+        let bps = shares_bps.get(i).unwrap();
+        total_bps = total_bps
+            .checked_add(bps)
+            .unwrap_or_else(|| panic!("share bps overflow"));
+    }
+    if total_bps != 10000 {
+        panic!("shares must sum to 10000 (100%)");
+    }
+
+    // ── Task state checks ──────────────────────────────────────────
+    let mut task: Task = env
+        .storage()
+        .instance()
+        .get(&DataKey::Task(task_id))
+        .unwrap_or_else(|| panic!("task not found"));
+
+    if task.status != TaskStatus::Disputed {
+        panic!("task is not disputed");
+    }
+
+    // ── Fee calculation ────────────────────────────────────────────
+    let platform_fee_bps: u32 = env
+        .storage()
+        .instance()
+        .get(&DataKey::PlatformFeeBps)
+        .unwrap_or(0);
+    let fee_recipient: Address = env
+        .storage()
+        .instance()
+        .get(&DataKey::FeeRecipient)
+        .unwrap();
+    let token_contract: Address = env
+        .storage()
+        .instance()
+        .get(&DataKey::TokenContract)
+        .unwrap();
+    let token_client = soroban_sdk::token::Client::new(&env, &token_contract);
+
+    let fee = (task.reward * platform_fee_bps as i128) / 10000;
+    let distributable = task.reward - fee;
+
+    // ── Distribute ─────────────────────────────────────────────────
+    for i in 0..recipients.len() {
+        let recipient = recipients.get(i).unwrap();
+        let bps = shares_bps.get(i).unwrap();
+        let payout = (distributable * bps as i128) / 10000;
+        if payout > 0 {
+            token_client.transfer(
+                &env.current_contract_address(),
+                &recipient,
+                &payout,
+            );
+        }
+    }
+
+    // Send the platform fee
+    if fee > 0 {
+        token_client.transfer(
+            &env.current_contract_address(),
+            &fee_recipient,
+            &fee,
+        );
+    }
+
+    // ── Release escrow ─────────────────────────────────────────────
+    escrow::release_escrow(env.clone(), task_id, task.reward);
+
+    task.status = TaskStatus::Resolved;
+    task.updated_at = env.ledger().timestamp();
+    env.storage()
+        .instance()
+        .set(&DataKey::Task(task_id), &task);
+
+    events::emit_dispute_split_resolved(&env, task_id, fee, distributable);
 }
 
 // ============================================================================

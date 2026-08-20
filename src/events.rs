@@ -61,6 +61,13 @@ pub fn emit_dispute_resolved(env: &Env, task_id: u32, creator_refund: i128, assi
     );
 }
 
+pub fn emit_dispute_split_resolved(env: &Env, task_id: u32, platform_fee: i128, distributable: i128) {
+    env.events().publish(
+        (symbol_short!("disp_splt"), task_id),
+        (platform_fee, distributable, env.ledger().timestamp()),
+    );
+}
+
 // ── Profile Events ─────────────────────────────────────────────────────────
 
 pub fn emit_profile_created(env: &Env, user: Address, username: String) {

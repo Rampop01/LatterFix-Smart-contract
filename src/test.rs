@@ -1230,3 +1230,288 @@ fn test_zkp_commitment_is_deterministic() {
     let second = compute_attestation_commitment(env.clone(), nullifier, signals);
     assert_eq!(first, second);
 }
+
+// ── Test: Dispute split with 3-way fractional payout ───────────────────────
+
+#[test]
+fn test_dispute_split_three_way() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    // 10% platform fee so fee math is obvious
+    let (client, contract_id, _, token_contract, fee_recipient) =
+        setup_initialized_contract(&env, 1000);
+
+    let creator = Address::generate(&env);
+    let a1 = Address::generate(&env);
+    let a2 = Address::generate(&env);
+    let _a3 = Address::generate(&env);
+
+    StellarAssetClient::new(&env, &token_contract).mint(&creator, &1000);
+
+    let task_id = client.create_task(
+        &creator,
+        &String::from_str(&env, "Split Task"),
+        &String::from_str(&env, "3-way split"),
+        &1000,
+        &Vec::new(&env),
+    );
+    client.assign_task(&a1, &task_id);
+    client.dispute_task(&creator, &task_id);
+
+    // 40% / 30% / 30%
+    let mut recipients = Vec::new(&env);
+    recipients.push_back(creator.clone());
+    recipients.push_back(a1.clone());
+    recipients.push_back(a2.clone());
+
+    let mut shares = Vec::new(&env);
+    shares.push_back(4000u32);
+    shares.push_back(3000u32);
+    shares.push_back(3000u32);
+
+    client.resolve_dispute_split(&task_id, &recipients, &shares);
+
+    // fee = 1000 * 1000 / 10000 = 100
+    // distributable = 900
+    // creator: 900 * 4000 / 10000 = 360
+    // a1:      900 * 3000 / 10000 = 270
+    // a2:      900 * 3000 / 10000 = 270
+    let token = soroban_sdk::token::Client::new(&env, &token_contract);
+    assert_eq!(token.balance(&fee_recipient), 100, "platform fee");
+    assert_eq!(token.balance(&creator), 360, "creator 40% share");
+    assert_eq!(token.balance(&a1), 270, "a1 30% share");
+    assert_eq!(token.balance(&a2), 270, "a2 30% share");
+    assert_eq!(token.balance(&contract_id), 0, "escrow fully drained");
+}
+
+// ── Test: Dispute split with zero fee ──────────────────────────────────────
+
+#[test]
+fn test_dispute_split_zero_fee() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, contract_id, _, token_contract, _) =
+        setup_initialized_contract(&env, 0); // 0% fee
+
+    let creator = Address::generate(&env);
+    let assignee = Address::generate(&env);
+    let mediator = Address::generate(&env);
+
+    StellarAssetClient::new(&env, &token_contract).mint(&creator, &800);
+
+    let task_id = client.create_task(
+        &creator,
+        &String::from_str(&env, "Zero Fee Split"),
+        &String::from_str(&env, "Split with no fee"),
+        &800,
+        &Vec::new(&env),
+    );
+    client.assign_task(&assignee, &task_id);
+    client.dispute_task(&creator, &task_id);
+
+    // 25% / 25% / 50%
+    let mut recipients = Vec::new(&env);
+    recipients.push_back(creator.clone());
+    recipients.push_back(assignee.clone());
+    recipients.push_back(mediator.clone());
+
+    let mut shares = Vec::new(&env);
+    shares.push_back(2500u32);
+    shares.push_back(2500u32);
+    shares.push_back(5000u32);
+
+    client.resolve_dispute_split(&task_id, &recipients, &shares);
+
+    let token = soroban_sdk::token::Client::new(&env, &token_contract);
+    assert_eq!(token.balance(&creator), 200, "creator 25%");
+    assert_eq!(token.balance(&assignee), 200, "assignee 25%");
+    assert_eq!(token.balance(&mediator), 400, "mediator 50%");
+    assert_eq!(token.balance(&contract_id), 0);
+}
+
+// ── Test: Dispute split rejects when task not disputed ─────────────────────
+
+#[test]
+fn test_dispute_split_rejects_non_disputed() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, _, token_contract, _) = setup_initialized_contract(&env, 100);
+
+    let creator = Address::generate(&env);
+    let a1 = Address::generate(&env);
+
+    StellarAssetClient::new(&env, &token_contract).mint(&creator, &100);
+
+    let task_id = client.create_task(
+        &creator,
+        &String::from_str(&env, "Normal Task"),
+        &String::from_str(&env, "Not disputed"),
+        &100,
+        &Vec::new(&env),
+    );
+    client.assign_task(&a1, &task_id);
+
+    let mut recipients = Vec::new(&env);
+    recipients.push_back(creator.clone());
+    recipients.push_back(a1.clone());
+
+    let mut shares = Vec::new(&env);
+    shares.push_back(5000u32);
+    shares.push_back(5000u32);
+
+    let res = client.try_resolve_dispute_split(&task_id, &recipients, &shares);
+    assert!(res.is_err(), "must reject when task is not disputed");
+}
+
+// ── Test: Dispute split rejects invalid share sum ──────────────────────────
+
+#[test]
+fn test_dispute_split_rejects_invalid_shares() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, _admin, token_contract, _) = setup_initialized_contract(&env, 0);
+
+    let creator = Address::generate(&env);
+    let assignee = Address::generate(&env);
+
+    StellarAssetClient::new(&env, &token_contract).mint(&creator, &500);
+
+    let task_id = client.create_task(
+        &creator,
+        &String::from_str(&env, "Bad Shares"),
+        &String::from_str(&env, "shares don't add up"),
+        &500,
+        &Vec::new(&env),
+    );
+    client.assign_task(&assignee, &task_id);
+    client.dispute_task(&creator, &task_id);
+
+    // 30% + 30% = 60% — not 100%
+    let mut recipients = Vec::new(&env);
+    recipients.push_back(creator.clone());
+    recipients.push_back(assignee.clone());
+
+    let mut shares = Vec::new(&env);
+    shares.push_back(3000u32);
+    shares.push_back(3000u32);
+
+    let res = client.try_resolve_dispute_split(&task_id, &recipients, &shares);
+    assert!(res.is_err(), "must reject when shares don't sum to 10000");
+}
+
+// ── Test: Dispute split rejects mismatched lengths ─────────────────────────
+
+#[test]
+fn test_dispute_split_rejects_mismatched_lengths() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, _, _, token_contract, _) = setup_initialized_contract(&env, 0);
+
+    let creator = Address::generate(&env);
+    let assignee = Address::generate(&env);
+
+    StellarAssetClient::new(&env, &token_contract).mint(&creator, &500);
+
+    let task_id = client.create_task(
+        &creator,
+        &String::from_str(&env, "Mismatch"),
+        &String::from_str(&env, "lengths differ"),
+        &500,
+        &Vec::new(&env),
+    );
+    client.assign_task(&assignee, &task_id);
+    client.dispute_task(&creator, &task_id);
+
+    let mut recipients = Vec::new(&env);
+    recipients.push_back(creator.clone());
+    recipients.push_back(assignee.clone());
+
+    let mut shares = Vec::new(&env);
+    shares.push_back(10000u32); // only one share for two recipients
+
+    let res = client.try_resolve_dispute_split(&task_id, &recipients, &shares);
+    assert!(res.is_err(), "must reject when lengths mismatch");
+}
+
+// ── Test: Dispute split via multisig proposal ──────────────────────────────
+
+#[test]
+fn test_dispute_split_via_multisig_proposal() {
+    use crate::multisig::{MultisigAction, MultisigProposalStatus};
+
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, TaskManagerContract);
+    let client = TaskManagerContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token = env.register_stellar_asset_contract(token_admin.clone());
+    let fee_recipient = Address::generate(&env);
+
+    client.initialize(&admin, &200u32, &token, &fee_recipient); // 2% fee
+
+    // Setup 2-of-3 multisig
+    let s0 = Address::generate(&env);
+    let s1 = Address::generate(&env);
+    let s2 = Address::generate(&env);
+    let mut signers = Vec::new(&env);
+    signers.push_back(s0.clone());
+    signers.push_back(s1.clone());
+    signers.push_back(s2.clone());
+    client.configure_multisig(&admin, &signers, &2u32, &None, &None);
+
+    // Create task + dispute
+    let creator = Address::generate(&env);
+    let assignee = Address::generate(&env);
+
+    StellarAssetClient::new(&env, &token).mint(&creator, &1000);
+
+    let task_id = client.create_task(
+        &creator,
+        &String::from_str(&env, "MS Split Task"),
+        &String::from_str(&env, "multisig split"),
+        &1000,
+        &Vec::new(&env),
+    );
+    client.assign_task(&assignee, &task_id);
+    client.dispute_task(&creator, &task_id);
+
+    // Propose split: 60% creator, 40% assignee
+    let mut recipients = Vec::new(&env);
+    recipients.push_back(creator.clone());
+    recipients.push_back(assignee.clone());
+
+    let mut shares = Vec::new(&env);
+    shares.push_back(6000u32);
+    shares.push_back(4000u32);
+
+    let desc = String::from_str(&env, "resolve 60/40");
+    let action = MultisigAction::ResolveDisputeSplit(task_id, recipients, shares);
+    let proposal_id = client.multisig_propose(&s0, &desc, &action);
+    assert_eq!(proposal_id, 1);
+
+    // First approval — still pending
+    let status = client.vote_proposal(&s0, &proposal_id);
+    assert_eq!(status, MultisigProposalStatus::Pending);
+
+    // Second approval triggers auto-execute
+    let status = client.vote_proposal(&s1, &proposal_id);
+    assert_eq!(status, MultisigProposalStatus::Executed);
+
+    // fee = 1000 * 200 / 10000 = 20
+    // distributable = 980
+    // creator:  980 * 6000 / 10000 = 588
+    // assignee: 980 * 4000 / 10000 = 392
+    let token_client = soroban_sdk::token::Client::new(&env, &token);
+    assert_eq!(token_client.balance(&fee_recipient), 20);
+    assert_eq!(token_client.balance(&creator), 588);
+    assert_eq!(token_client.balance(&assignee), 392);
+    assert_eq!(token_client.balance(&contract_id), 0);
+}
