@@ -1,5 +1,5 @@
-use soroban_sdk::unwrap::UnwrapOptimized;
 #![cfg(kani)]
+use soroban_sdk::unwrap::UnwrapOptimized;
 
 // ============================================================================
 // Formal Verification Harnesses — Kani Rust Model Checker
@@ -383,7 +383,7 @@ fn verify_slippage_guard_bounds() {
 //
 // Invalid transitions must be rejected (return None).
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum MsState {
     Pending,
     Submitted,

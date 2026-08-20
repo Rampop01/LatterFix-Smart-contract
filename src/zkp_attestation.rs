@@ -65,6 +65,7 @@ pub struct IdentityAttestation {
 
 #[contracttype]
 #[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, kani), derive(Debug))]
 pub struct AttestationReceipt {
     pub nullifier: BytesN<32>,
     pub subject: Address,
@@ -74,6 +75,7 @@ pub struct AttestationReceipt {
 
 #[contracttype]
 #[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, kani), derive(Debug))]
 pub enum AttestationError {
     CircuitNotRegistered,
     MalformedProof,

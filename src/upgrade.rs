@@ -57,6 +57,7 @@ use crate::{access_control, DataKey};
 #[contracttype]
 #[derive(Clone, Copy, Eq, PartialEq)]
 #[repr(u32)]
+#[cfg_attr(any(test, kani), derive(Debug))]
 pub enum UpgradeStatus {
     Pending = 0,
     Executed = 1,
@@ -65,6 +66,7 @@ pub enum UpgradeStatus {
 
 #[contracttype]
 #[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, kani), derive(Debug))]
 pub struct UpgradeProposal {
     pub wasm_hash: BytesN<32>,
     pub proposed_by: Address,

@@ -47,6 +47,7 @@ use crate::DataKey;
 #[contracttype]
 #[derive(Clone, Copy, Eq, PartialEq)]
 #[repr(u32)]
+#[cfg_attr(any(test, kani), derive(Debug))]
 pub enum MultisigProposalStatus {
     Pending = 0,
     Approved = 1,
