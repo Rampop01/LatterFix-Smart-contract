@@ -10,6 +10,7 @@ pub mod pausable;
 pub mod reputation;
 pub mod storage;
 pub mod swap_router;
+pub mod treasury;
 pub mod twap_oracle;
 pub mod upgrade;
 pub mod user_profile;
@@ -25,6 +26,8 @@ mod multisig_test;
 mod swap_router_test;
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod treasury_test;
 #[cfg(test)]
 mod upgrade_test;
 
@@ -1222,6 +1225,97 @@ impl TaskManagerContract {
     /// `propose_upgrade`.
     pub fn get_upgrade_history(env: Env) -> Vec<upgrade::UpgradeHistoryEntry> {
         upgrade::get_upgrade_history(&env)
+    }
+
+    // ========================================================================
+    // Reward Treasury: Decay-Curve Vesting & Distribution
+    // ========================================================================
+
+    /// Set the SAC token the reward treasury holds and pays out. Admin-only.
+    pub fn configure_treasury(env: Env, admin: Address, token: Address) {
+        treasury::configure_treasury(env, admin, token);
+    }
+
+    /// Deposit `amount` of the treasury token into the reward treasury.
+    /// Returns the new total treasury balance.
+    pub fn fund_treasury(env: Env, funder: Address, amount: i128) -> i128 {
+        let new_balance = treasury::fund_treasury(env.clone(), funder.clone(), amount);
+        events::emit_treasury_funded(&env, funder, amount, new_balance);
+        new_balance
+    }
+
+    /// Create a decay-curve vesting schedule paying `total_amount` to
+    /// `beneficiary` over time. Admin-only; rejected if it would allocate
+    /// more than the treasury's currently funded, unallocated balance.
+    pub fn create_vesting_schedule(
+        env: Env,
+        admin: Address,
+        beneficiary: Address,
+        total_amount: i128,
+        start_time: u64,
+        cliff_seconds: u64,
+        period_seconds: u64,
+        decay_rate_bps: u32,
+    ) -> u32 {
+        let schedule_id = treasury::create_vesting_schedule(
+            env.clone(),
+            admin,
+            beneficiary.clone(),
+            total_amount,
+            start_time,
+            cliff_seconds,
+            period_seconds,
+            decay_rate_bps,
+        );
+        events::emit_vesting_schedule_created(
+            &env,
+            schedule_id,
+            beneficiary,
+            total_amount,
+            decay_rate_bps,
+        );
+        schedule_id
+    }
+
+    /// Claim everything currently vested-but-unclaimed on `schedule_id`.
+    /// Beneficiary-only. Returns the amount transferred.
+    pub fn claim_vesting(env: Env, beneficiary: Address, schedule_id: u32) -> i128 {
+        let amount = treasury::claim(env.clone(), beneficiary.clone(), schedule_id);
+        let schedule = treasury::get_vesting_schedule(&env, schedule_id).unwrap();
+        events::emit_vesting_claimed(
+            &env,
+            schedule_id,
+            beneficiary,
+            amount,
+            schedule.claimed_amount,
+        );
+        amount
+    }
+
+    pub fn get_vesting_schedule(env: Env, schedule_id: u32) -> Option<treasury::VestingSchedule> {
+        treasury::get_vesting_schedule(&env, schedule_id)
+    }
+
+    pub fn get_beneficiary_schedules(env: Env, beneficiary: Address) -> Vec<u32> {
+        treasury::get_beneficiary_schedules(env, beneficiary)
+    }
+
+    /// Amount vested so far on `schedule_id`, ignoring claims already made.
+    pub fn get_vested_amount(env: Env, schedule_id: u32) -> i128 {
+        treasury::vested_amount(&env, schedule_id)
+    }
+
+    /// Amount currently claimable on `schedule_id`: vested minus claimed.
+    pub fn get_claimable_amount(env: Env, schedule_id: u32) -> i128 {
+        treasury::claimable_amount(&env, schedule_id)
+    }
+
+    pub fn get_treasury_balance(env: Env) -> i128 {
+        treasury::get_treasury_balance(&env)
+    }
+
+    pub fn get_treasury_allocated(env: Env) -> i128 {
+        treasury::get_allocated_total(&env)
     }
 }
 
