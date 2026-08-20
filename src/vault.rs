@@ -1,10 +1,6 @@
+use soroban_sdk::unwrap::UnwrapOptimized;
 use soroban_sdk::{contracttype, Address, Env, Vec};
 
-/// Multi-stablecoin vault module.
-///
-/// Lets the contract hold balances in more than one SAC token (USDC, ORGUSD,
-/// EURT, etc.) within the same instance, with separate ledgers per token and
-/// per depositor so funds never mix across asset types.
 
 #[contracttype]
 pub enum VaultKey {
@@ -69,14 +65,12 @@ pub fn get_depositor_balance(env: &Env, depositor: Address, token: Address) -> i
 
 // ── Deposit / Claim ─────────────────────────────────────────────────────────
 
-/// Deposit `amount` of `token` into the vault on behalf of `depositor`.
-/// Requires `token` to already be registered as supported.
 pub fn deposit(env: &Env, depositor: Address, token: Address, amount: i128) {
     if amount <= 0 {
-        panic!("deposit amount must be positive");
+        panic!();
     }
     if !is_supported_token(env, &token) {
-        panic!("token not supported");
+        panic!();
     }
 
     let token_client = soroban_sdk::token::Client::new(env, &token);
@@ -95,17 +89,15 @@ pub fn deposit(env: &Env, depositor: Address, token: Address, amount: i128) {
         .set(&dep_key, &(dep_balance + amount));
 }
 
-/// Claim `amount` of `token` out of the vault for `claimant`, drawing down
-/// their depositor balance for that specific token.
 pub fn claim(env: &Env, claimant: Address, token: Address, amount: i128) {
     if amount <= 0 {
-        panic!("claim amount must be positive");
+        panic!();
     }
 
     let dep_key = VaultKey::DepositorBalance(claimant.clone(), token.clone());
     let dep_balance = get_depositor_balance(env, claimant.clone(), token.clone());
     if dep_balance < amount {
-        panic!("insufficient vault balance for this token");
+        panic!();
     }
 
     let vault_key = VaultKey::VaultBalance(token.clone());
@@ -141,12 +133,12 @@ pub fn claim_payroll(
     proof: Vec<BytesN<32>>,
 ) {
     if amount <= 0 {
-        panic!("claim amount must be positive");
+        panic!();
     }
 
     let claim_key = VaultKey::PayrollClaimed(payroll_id, claimant.clone());
     if env.storage().persistent().has(&claim_key) {
-        panic!("payroll already claimed");
+        panic!();
     }
 
     let root_key = VaultKey::PayrollRoot(payroll_id);
@@ -154,13 +146,13 @@ pub fn claim_payroll(
         .storage()
         .persistent()
         .get(&root_key)
-        .unwrap_or_else(|| panic!("payroll root not found"));
+        .unwrap_optimized();
 
     let leaf_data = (claimant.clone(), token.clone(), amount).to_xdr(env);
     let leaf = env.crypto().sha256(&leaf_data).into();
 
     if !verify_merkle_proof(env, &root, &leaf, &proof) {
-        panic!("invalid merkle proof");
+        panic!();
     }
 
     env.storage().persistent().set(&claim_key, &true);
@@ -169,7 +161,7 @@ pub fn claim_payroll(
     let vault_total = get_vault_balance(env, token.clone());
 
     if vault_total < amount {
-        panic!("insufficient vault balance for payroll");
+        panic!();
     }
 
     env.storage()

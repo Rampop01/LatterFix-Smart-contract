@@ -1,3 +1,4 @@
+use soroban_sdk::unwrap::UnwrapOptimized;
 #![cfg(test)]
 #![allow(deprecated)]
 
@@ -5,7 +6,7 @@ use crate::multisig::{MultisigAction, MultisigProposalStatus};
 use crate::{TaskManagerContract, TaskManagerContractClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::token::StellarAssetClient;
-use soroban_sdk::{Address, Env, String, Vec};
+use soroban_sdk::{Address, Env, Symbol, Vec};
 
 // ── Shared setup ───────────────────────────────────────────────────────────
 
@@ -20,7 +21,6 @@ struct Ctx {
     signers: Vec<Address>,
 }
 
-/// Initialize the contract and install an N-signer multisig with `threshold`.
 fn setup(env: &Env, signer_count: u32, threshold: u32) -> Ctx {
     let contract_id = env.register_contract(None, TaskManagerContract);
     let client = TaskManagerContractClient::new(env, &contract_id);
@@ -51,11 +51,11 @@ fn setup(env: &Env, signer_count: u32, threshold: u32) -> Ctx {
 }
 
 fn signer(ctx: &Ctx, i: u32) -> Address {
-    ctx.signers.get(i).unwrap()
+    ctx.signers.get(i).unwrap_optimized()
 }
 
-fn desc(env: &Env) -> String {
-    String::from_str(env, "raise platform fee to 2.5%")
+fn desc(env: &Env) -> Symbol {
+    Symbol::new(&env, "raise platform fee to 2.5%")
 }
 
 // ── Configuration ──────────────────────────────────────────────────────────
@@ -142,7 +142,7 @@ fn test_propose_creates_pending_proposal() {
     );
     assert_eq!(id, 1);
 
-    let proposal = ctx.client.get_multisig_proposal(&id).unwrap();
+    let proposal = ctx.client.get_multisig_proposal(&id).unwrap_optimized();
     assert_eq!(proposal.status, MultisigProposalStatus::Pending);
     assert_eq!(proposal.threshold, 2);
     assert_eq!(proposal.proposer, signer(&ctx, 0));
@@ -305,7 +305,7 @@ fn test_threshold_auto_executes_parameter_change() {
         MultisigProposalStatus::Executed
     );
 
-    let proposal = ctx.client.get_multisig_proposal(&id).unwrap();
+    let proposal = ctx.client.get_multisig_proposal(&id).unwrap_optimized();
     assert_eq!(proposal.status, MultisigProposalStatus::Executed);
     assert!(proposal.executed_at.is_some());
     assert_eq!(proposal.approvals.len(), 2);
@@ -424,7 +424,7 @@ fn test_treasury_transfer_executes_on_threshold() {
 
     let id = ctx.client.multisig_propose(
         &signer(&ctx, 0),
-        &String::from_str(&env, "pay grant"),
+        &Symbol::new(&env, "pay grant"),
         &MultisigAction::TreasuryTransfer(ctx.token.clone(), recipient.clone(), 400),
     );
 
@@ -448,7 +448,7 @@ fn test_treasury_transfer_beyond_balance_reverts_whole_call() {
     let recipient = Address::generate(&env);
     let id = ctx.client.multisig_propose(
         &signer(&ctx, 0),
-        &String::from_str(&env, "overdraw"),
+        &Symbol::new(&env, "overdraw"),
         &MultisigAction::TreasuryTransfer(ctx.token.clone(), recipient.clone(), 5_000),
     );
 
@@ -459,7 +459,7 @@ fn test_treasury_transfer_beyond_balance_reverts_whole_call() {
     let res = ctx.client.try_vote_proposal(&signer(&ctx, 1), &id);
     assert!(res.is_err(), "underfunded treasury transfer must revert");
 
-    let proposal = ctx.client.get_multisig_proposal(&id).unwrap();
+    let proposal = ctx.client.get_multisig_proposal(&id).unwrap_optimized();
     assert_eq!(
         proposal.status,
         MultisigProposalStatus::Pending,
@@ -491,7 +491,7 @@ fn test_signer_rotation_via_proposal() {
 
     let id = ctx.client.multisig_propose(
         &signer(&ctx, 0),
-        &String::from_str(&env, "rotate signers"),
+        &Symbol::new(&env, "rotate signers"),
         &MultisigAction::SetSigners(new_set, 2),
     );
 
@@ -563,7 +563,7 @@ fn test_threshold_is_snapshotted_at_creation() {
         &desc(&env),
         &MultisigAction::SetPlatformFee(250),
     );
-    assert_eq!(ctx.client.get_multisig_proposal(&id).unwrap().threshold, 4);
+    assert_eq!(ctx.client.get_multisig_proposal(&id).unwrap_optimized().threshold, 4);
 
     // Admin lowers the live threshold to 2 after the proposal was created.
     ctx.client
@@ -601,7 +601,7 @@ fn test_proposer_can_cancel() {
     );
     ctx.client.multisig_cancel_proposal(&signer(&ctx, 0), &id);
 
-    let proposal = ctx.client.get_multisig_proposal(&id).unwrap();
+    let proposal = ctx.client.get_multisig_proposal(&id).unwrap_optimized();
     assert_eq!(proposal.status, MultisigProposalStatus::Cancelled);
 
     let res = ctx.client.try_vote_proposal(&signer(&ctx, 1), &id);
@@ -622,7 +622,7 @@ fn test_admin_can_cancel_any_proposal() {
     ctx.client.multisig_cancel_proposal(&ctx.admin, &id);
 
     assert_eq!(
-        ctx.client.get_multisig_proposal(&id).unwrap().status,
+        ctx.client.get_multisig_proposal(&id).unwrap_optimized().status,
         MultisigProposalStatus::Cancelled
     );
 }
@@ -768,18 +768,16 @@ fn test_pending_proposals_listing() {
 
     let pending = ctx.client.get_pending_multisig_proposals();
     assert_eq!(pending.len(), 1, "only the untouched proposal stays pending");
-    assert_eq!(pending.get(0).unwrap().id, keep);
+    assert_eq!(pending.get(0).unwrap_optimized().id, keep);
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/// Read the live platform fee straight from contract storage, to confirm an
-/// executed proposal actually mutated state rather than only its own record.
 fn fee_bps(env: &Env, ctx: &Ctx) -> u32 {
     env.as_contract(&ctx.contract_id, || {
         env.storage()
             .instance()
             .get(&crate::DataKey::PlatformFeeBps)
-            .unwrap()
+            .unwrap_optimized()
     })
 }

@@ -1,11 +1,5 @@
 use soroban_sdk::{Bytes, BytesN, Env, Vec};
 
-/// Verify a Merkle proof against a root hash.
-///
-/// * `env` - The Soroban environment.
-/// * `root` - The Merkle root.
-/// * `leaf` - The leaf node hash to verify.
-/// * `proof` - The array of sibling hashes making up the proof.
 pub fn verify_merkle_proof(
     env: &Env,
     root: &BytesN<32>,

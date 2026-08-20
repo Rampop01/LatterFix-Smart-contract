@@ -1,88 +1,60 @@
-use soroban_sdk::{contracttype, Env, String, Vec};
+use soroban_sdk::unwrap::UnwrapOptimized;
+use soroban_sdk::{contracttype, Env, Symbol, Vec};
 
-/// Time-Weighted Average Price (TWAP) Oracle Module
-///
-/// Provides on-chain price reading for cross-asset salary conversion with:
-/// - Protection against short-term price manipulation and flash spikes
-/// - Observation buffer for multi-period TWAP calculations
-/// - Outlier filtering to reject sudden price deviations
-/// - Graceful fallback to secondary oracle feeds if primary liquidity drops
 
 // ──────────────────────────────────────────────────────────────────────────
 // Data Types
 // ──────────────────────────────────────────────────────────────────────────
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct PriceObservation {
-    /// Unix timestamp of when this price observation was recorded
     pub timestamp: u64,
-    /// Cumulative price value (price * timestamp_delta for precision)
     pub cumulative_price: i128,
-    /// Raw price quote (scaled to 18 decimals for consistency)
     pub price: i128,
-    /// Block ledger sequence number for validation
     pub ledger_sequence: u32,
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct TwapConfig {
-    /// Primary DEX pool contract address
-    pub primary_pool: String,
-    /// Secondary Oracle feed address for fallback
-    pub secondary_oracle: Option<String>,
-    /// Minimum observation count required for valid TWAP
+    pub primary_pool: Symbol,
+    pub secondary_oracle: Option<Symbol>,
     pub min_observation_count: u32,
-    /// Maximum allowed price deviation (in basis points, e.g., 500 = 5%)
     pub max_deviation_bps: u32,
-    /// Observation window size in seconds
     pub observation_window_secs: u64,
-    /// Minimum liquidity threshold (in base token units) to use primary pool
     pub min_liquidity_threshold: i128,
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct TwapResult {
-    /// The calculated TWAP value
     pub price: i128,
-    /// Timestamp of the oldest observation used
     pub oldest_timestamp: u64,
-    /// Timestamp of the newest observation used
     pub newest_timestamp: u64,
-    /// Number of observations included
     pub observation_count: u32,
-    /// Whether fallback oracle was used
     pub used_fallback: bool,
-    /// Average deviation from median (in basis points)
     pub avg_deviation_bps: u32,
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum TwapStorageKey {
-    /// Store configuration: TwapStorageKey::Config
     Config,
-    /// Store observation history: TwapStorageKey::Observations(asset_pair)
-    Observations(String),
-    /// Store last recorded observation: TwapStorageKey::LastObservation(asset_pair)
-    LastObservation(String),
-    /// Store primary pool liquidity: TwapStorageKey::PoolLiquidity(asset_pair)
-    PoolLiquidity(String),
-    /// Store fallback pricing data: TwapStorageKey::FallbackPrice(asset_pair)
-    FallbackPrice(String),
+    Observations(Symbol),
+    LastObservation(Symbol),
+    PoolLiquidity(Symbol),
+    FallbackPrice(Symbol),
 }
 
 // ──────────────────────────────────────────────────────────────────────────
 // Configuration Management
 // ──────────────────────────────────────────────────────────────────────────
 
-/// Initialize TWAP oracle configuration
 pub fn initialize_twap_config(
     env: Env,
-    primary_pool: String,
-    secondary_oracle: Option<String>,
+    primary_pool: Symbol,
+    secondary_oracle: Option<Symbol>,
     min_observation_count: u32,
     max_deviation_bps: u32,
     observation_window_secs: u64,
@@ -102,22 +74,20 @@ pub fn initialize_twap_config(
         .set(&TwapStorageKey::Config, &config);
 }
 
-/// Retrieve TWAP configuration
 pub fn get_twap_config(env: Env) -> TwapConfig {
     env.storage()
         .persistent()
         .get(&TwapStorageKey::Config)
-        .unwrap_or_else(|| panic!("TWAP config not initialized"))
+        .unwrap_optimized()
 }
 
 // ──────────────────────────────────────────────────────────────────────────
 // Observation Recording
 // ──────────────────────────────────────────────────────────────────────────
 
-/// Record a new price observation from the primary DEX pool
 pub fn record_price_observation(
     env: Env,
-    asset_pair: String,
+    asset_pair: Symbol,
     cumulative_price: i128,
     raw_price: i128,
     timestamp: u64,
@@ -148,20 +118,18 @@ pub fn record_price_observation(
     env.storage().persistent().set(&key, &observations);
 }
 
-/// Update pool liquidity status for fallback logic
 pub fn update_pool_liquidity(
     env: Env,
-    asset_pair: String,
+    asset_pair: Symbol,
     liquidity: i128,
 ) {
     let key = TwapStorageKey::PoolLiquidity(asset_pair);
     env.storage().persistent().set(&key, &liquidity);
 }
 
-/// Set fallback price from secondary oracle
 pub fn set_fallback_price(
     env: Env,
-    asset_pair: String,
+    asset_pair: Symbol,
     price: i128,
     timestamp: u64,
 ) {
@@ -180,10 +148,9 @@ pub fn set_fallback_price(
 // Outlier Detection & Filtering
 // ──────────────────────────────────────────────────────────────────────────
 
-/// Calculate median price from observations
 fn calculate_median(_env: &Env, prices: &Vec<i128>) -> i128 {
     if prices.is_empty() {
-        panic!("cannot calculate median of empty vector");
+        panic!();
     }
 
     let len = prices.len();
@@ -195,25 +162,23 @@ fn calculate_median(_env: &Env, prices: &Vec<i128>) -> i128 {
     // Bubble sort (acceptable for small observation sets)
     for i in 0..len {
         for j in i + 1..len {
-            if sorted.get(j).unwrap() < sorted.get(i).unwrap() {
-                let temp = sorted.get(i).unwrap();
-                sorted.set(i, sorted.get(j).unwrap());
+            if sorted.get(j).unwrap_optimized() < sorted.get(i).unwrap_optimized() {
+                let temp = sorted.get(i).unwrap_optimized();
+                sorted.set(i, sorted.get(j).unwrap_optimized());
                 sorted.set(j, temp);
             }
         }
     }
 
     if len % 2 == 1 {
-        sorted.get(len / 2).unwrap()
+        sorted.get(len / 2).unwrap_optimized()
     } else {
-        let mid1 = sorted.get(len / 2 - 1).unwrap();
-        let mid2 = sorted.get(len / 2).unwrap();
+        let mid1 = sorted.get(len / 2 - 1).unwrap_optimized();
+        let mid2 = sorted.get(len / 2).unwrap_optimized();
         (mid1 + mid2) / 2
     }
 }
 
-/// Filter observations by rejecting outliers
-/// Returns filtered observations and average deviation in basis points
 fn filter_outliers(
     env: &Env,
     observations: &Vec<PriceObservation>,
@@ -226,7 +191,7 @@ fn filter_outliers(
     // Extract prices for median calculation
     let mut prices = Vec::new(env);
     for i in 0..observations.len() {
-        prices.push_back(observations.get(i).unwrap().price);
+        prices.push_back(observations.get(i).unwrap_optimized().price);
     }
 
     let median = calculate_median(env, &prices);
@@ -236,7 +201,7 @@ fn filter_outliers(
     let mut count: i128 = 0;
 
     for i in 0..observations.len() {
-        let obs = observations.get(i).unwrap();
+        let obs = observations.get(i).unwrap_optimized();
         let price = obs.price;
 
         // Calculate deviation in basis points (10000 bps = 100%)
@@ -272,11 +237,9 @@ fn filter_outliers(
 // TWAP Calculation
 // ──────────────────────────────────────────────────────────────────────────
 
-/// Calculate TWAP over a specified observation window
-/// Returns TwapResult with calculated price and metadata
 pub fn calculate_twap(
     env: Env,
-    asset_pair: String,
+    asset_pair: Symbol,
 ) -> TwapResult {
     let config = get_twap_config(env.clone());
 
@@ -294,7 +257,7 @@ pub fn calculate_twap(
         if config.secondary_oracle.is_some() {
             return calculate_twap_fallback(env, asset_pair, config);
         } else {
-            panic!("insufficient observations for TWAP calculation");
+            panic!();
         }
     }
 
@@ -304,7 +267,7 @@ pub fn calculate_twap(
 
     let mut window_observations = Vec::new(&env);
     for i in 0..all_observations.len() {
-        let obs = all_observations.get(i).unwrap();
+        let obs = all_observations.get(i).unwrap_optimized();
         if obs.timestamp >= window_start && obs.timestamp <= current_timestamp {
             window_observations.push_back(obs);
         }
@@ -316,7 +279,7 @@ pub fn calculate_twap(
         if config.secondary_oracle.is_some() {
             return calculate_twap_fallback(env, asset_pair, config);
         } else {
-            panic!("insufficient observations within window");
+            panic!();
         }
     }
 
@@ -329,13 +292,13 @@ pub fn calculate_twap(
         if config.secondary_oracle.is_some() {
             return calculate_twap_fallback(env, asset_pair, config);
         } else {
-            panic!("all observations filtered as outliers");
+            panic!();
         }
     }
 
     // Compute TWAP using cumulative prices
-    let first_obs = filtered_observations.get(0).unwrap();
-    let last_obs = filtered_observations.get(filtered_observations.len() - 1).unwrap();
+    let first_obs = filtered_observations.get(0).unwrap_optimized();
+    let last_obs = filtered_observations.get(filtered_observations.len() - 1).unwrap_optimized();
 
     let time_delta = if last_obs.timestamp > first_obs.timestamp {
         last_obs.timestamp - first_obs.timestamp
@@ -361,10 +324,9 @@ pub fn calculate_twap(
     }
 }
 
-/// Fallback TWAP calculation using secondary oracle feed
 fn calculate_twap_fallback(
     env: Env,
-    asset_pair: String,
+    asset_pair: Symbol,
     _config: TwapConfig,
 ) -> TwapResult {
     let fallback_key = TwapStorageKey::FallbackPrice(asset_pair.clone());
@@ -372,7 +334,7 @@ fn calculate_twap_fallback(
         .storage()
         .persistent()
         .get(&fallback_key)
-        .unwrap_or_else(|| panic!("no fallback price available"));
+        .unwrap_optimized();
 
     TwapResult {
         price: fallback_obs.price,
@@ -384,19 +346,17 @@ fn calculate_twap_fallback(
     }
 }
 
-/// Get the most recent TWAP without recalculating (cached)
 pub fn get_last_twap(
     env: Env,
-    asset_pair: String,
+    asset_pair: Symbol,
 ) -> Option<PriceObservation> {
     let key = TwapStorageKey::LastObservation(asset_pair);
     env.storage().persistent().get(&key)
 }
 
-/// Prune old observations to save storage (keep only recent data)
 pub fn prune_old_observations(
     env: Env,
-    asset_pair: String,
+    asset_pair: Symbol,
     retention_secs: u64,
 ) -> u32 {
     let _config = get_twap_config(env.clone());
@@ -414,7 +374,7 @@ pub fn prune_old_observations(
     let mut pruned_count = 0u32;
 
     for i in 0..all_observations.len() {
-        let obs = all_observations.get(i).unwrap();
+        let obs = all_observations.get(i).unwrap_optimized();
         if obs.timestamp >= cutoff_timestamp {
             kept_observations.push_back(obs);
         } else {
@@ -435,10 +395,9 @@ pub fn prune_old_observations(
 // Liquidity & Health Checks
 // ──────────────────────────────────────────────────────────────────────────
 
-/// Check if primary pool has sufficient liquidity
 pub fn is_pool_liquid_enough(
     env: Env,
-    asset_pair: String,
+    asset_pair: Symbol,
 ) -> bool {
     let config = get_twap_config(env.clone());
     let liquidity_key = TwapStorageKey::PoolLiquidity(asset_pair);
@@ -451,10 +410,9 @@ pub fn is_pool_liquid_enough(
     current_liquidity >= config.min_liquidity_threshold
 }
 
-/// Get current pool liquidity
 pub fn get_pool_liquidity(
     env: Env,
-    asset_pair: String,
+    asset_pair: Symbol,
 ) -> i128 {
     let liquidity_key = TwapStorageKey::PoolLiquidity(asset_pair);
     env.storage()

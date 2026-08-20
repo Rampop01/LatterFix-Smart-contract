@@ -1,3 +1,4 @@
+use soroban_sdk::unwrap::UnwrapOptimized;
 #![cfg(test)]
 #![allow(deprecated)]
 
@@ -29,18 +30,11 @@ fn setup(env: &Env) -> Ctx {
     Ctx { client, admin }
 }
 
-/// A WASM hash that has actually been uploaded to the test host, so
-/// `execute_upgrade`'s call into `update_current_contract_wasm` succeeds
-/// instead of tripping the host's "wasm does not exist" check. The Soroban
-/// test host specifically allows a zero-length WASM blob for this purpose.
 fn uploaded_wasm_hash(env: &Env) -> BytesN<32> {
     let empty_wasm: &[u8] = &[];
     env.deployer().upload_contract_wasm(empty_wasm)
 }
 
-/// An arbitrary hash that was never uploaded. Fine for tests that only
-/// exercise the proposal state machine and must panic before ever reaching
-/// the actual WASM swap (premature execution, unauthorized callers, etc).
 fn placeholder_wasm_hash(env: &Env) -> BytesN<32> {
     BytesN::from_array(env, &[7u8; 32])
 }
@@ -64,7 +58,7 @@ fn test_propose_upgrade_sets_pending_state_with_timelock() {
         proposal.proposed_at + DEFAULT_TIMELOCK_SECONDS
     );
 
-    let pending = ctx.client.get_pending_upgrade().unwrap();
+    let pending = ctx.client.get_pending_upgrade().unwrap_optimized();
     assert_eq!(pending, proposal);
 }
 
@@ -137,14 +131,14 @@ fn test_execute_upgrade_succeeds_after_timelock_elapses() {
     let applied_hash = ctx.client.execute_upgrade(&ctx.admin);
     assert_eq!(applied_hash, hash);
 
-    let pending = ctx.client.get_pending_upgrade().unwrap();
+    let pending = ctx.client.get_pending_upgrade().unwrap_optimized();
     assert_eq!(pending.status, UpgradeStatus::Executed);
     assert!(pending.executed_at.is_some());
 
     // Historical hash log records the applied upgrade for future rollback.
     let history = ctx.client.get_upgrade_history();
     assert_eq!(history.len(), 1);
-    let entry = history.get(0).unwrap();
+    let entry = history.get(0).unwrap_optimized();
     assert_eq!(entry.wasm_hash, hash);
     assert_eq!(entry.applied_by, ctx.admin);
 }

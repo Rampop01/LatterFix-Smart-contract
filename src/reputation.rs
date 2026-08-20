@@ -1,18 +1,19 @@
-use soroban_sdk::{contracttype, Address, Env, Map, String, Vec};
+use soroban_sdk::unwrap::UnwrapOptimized;
+use soroban_sdk::{contracttype, Address, Env, Map, Symbol, Vec};
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct ReputationEvent {
     pub user: Address,
     pub points: i32,
     pub event_type: ReputationEventType,
     pub timestamp: u64,
     pub reference_id: Option<u32>, // Task ID or other reference
-    pub description: String,
+    pub description: Symbol,
 }
 
 #[contracttype]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum ReputationEventType {
     TaskCompleted,
     TaskVerified,
@@ -26,20 +27,20 @@ pub enum ReputationEventType {
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct ReputationTier {
-    pub name: String,
+    pub name: Symbol,
     pub min_points: u32,
     pub max_points: u32,
-    pub badge_url: Option<String>,
+    pub badge_url: Option<Symbol>,
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct UserReputationSummary {
     pub user: Address,
     pub total_points: u32,
-    pub tier: String,
+    pub tier: Symbol,
     pub tasks_completed: u32,
     pub tasks_verified: u32,
     pub disputes_won: u32,
@@ -62,31 +63,31 @@ pub fn init_reputation_tiers(env: Env) {
     let tiers: Vec<ReputationTier> = {
         let mut v = Vec::new(&env);
         v.push_back(ReputationTier {
-            name: String::from_str(&env, "Newcomer"),
+            name: Symbol::new(&env, "Newcomer"),
             min_points: 0,
             max_points: 99,
             badge_url: None,
         });
         v.push_back(ReputationTier {
-            name: String::from_str(&env, "Contributor"),
+            name: Symbol::new(&env, "Contributor"),
             min_points: 100,
             max_points: 499,
             badge_url: None,
         });
         v.push_back(ReputationTier {
-            name: String::from_str(&env, "Expert"),
+            name: Symbol::new(&env, "Expert"),
             min_points: 500,
             max_points: 999,
             badge_url: None,
         });
         v.push_back(ReputationTier {
-            name: String::from_str(&env, "Master"),
+            name: Symbol::new(&env, "Master"),
             min_points: 1000,
             max_points: 2499,
             badge_url: None,
         });
         v.push_back(ReputationTier {
-            name: String::from_str(&env, "Legend"),
+            name: Symbol::new(&env, "Legend"),
             min_points: 2500,
             max_points: u32::MAX,
             badge_url: None,
@@ -105,7 +106,7 @@ pub fn award_reputation(
     points: i32,
     event_type: ReputationEventType,
     reference_id: Option<u32>,
-    description: String,
+    description: Symbol,
 ) {
     let key = ReputationKey::UserPoints(user.clone());
     let mut current: i32 = env.storage().persistent().get(&key).unwrap_or(100i32); // Starting reputation
@@ -143,7 +144,7 @@ pub fn get_user_reputation(env: Env, user: Address) -> u32 {
     env.storage().persistent().get(&key).unwrap_or(100) as u32
 }
 
-pub fn get_user_tier(env: Env, user: Address) -> String {
+pub fn get_user_tier(env: Env, user: Address) -> Symbol {
     let points = get_user_reputation(env.clone(), user);
 
     let tiers: Vec<ReputationTier> = env
@@ -156,7 +157,7 @@ pub fn get_user_tier(env: Env, user: Address) -> String {
             env.storage()
                 .persistent()
                 .get(&ReputationKey::ReputationTiers)
-                .unwrap()
+                .unwrap_optimized()
         });
 
     for tier in tiers.iter() {
@@ -165,7 +166,7 @@ pub fn get_user_tier(env: Env, user: Address) -> String {
         }
     }
 
-    String::from_str(&env, "Unknown")
+    Symbol::new(&env, "Unknown")
 }
 
 pub fn update_leaderboard(env: &Env, user: Address, points: u32) {

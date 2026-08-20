@@ -1,7 +1,8 @@
-use soroban_sdk::{contracttype, Address, Env, String, Vec};
+use soroban_sdk::unwrap::UnwrapOptimized;
+use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
 
 #[contracttype]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum ProposalStatus {
     Active,
     Executed,
@@ -11,7 +12,7 @@ pub enum ProposalStatus {
 }
 
 #[contracttype]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum VoteType {
     For,
     Against,
@@ -19,11 +20,11 @@ pub enum VoteType {
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct Proposal {
     pub id: u32,
-    pub title: String,
-    pub description: String,
+    pub title: Symbol,
+    pub description: Symbol,
     pub proposer: Address,
     pub status: ProposalStatus,
     pub created_at: u64,
@@ -37,7 +38,7 @@ pub struct Proposal {
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct Vote {
     pub voter: Address,
     pub proposal_id: u32,
@@ -56,7 +57,7 @@ pub enum GovernanceKey {
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct GovernanceConfig {
     pub voting_period: u64, // Duration in seconds
     pub quorum: u32,        // Minimum votes needed
@@ -90,8 +91,8 @@ pub fn set_config(env: Env, admin: Address, config: GovernanceConfig) {
 pub fn create_proposal(
     env: Env,
     proposer: Address,
-    title: String,
-    description: String,
+    title: Symbol,
+    description: Symbol,
     quorum: Option<u32>,
     threshold: Option<u32>,
     _min_reputation: u32,
@@ -140,21 +141,21 @@ pub fn cast_vote(env: Env, voter: Address, proposal_id: u32, vote_type: VoteType
         .storage()
         .persistent()
         .get(&proposal_key)
-        .unwrap_or_else(|| panic!("proposal not found"));
+        .unwrap_optimized();
 
     if proposal.status != ProposalStatus::Active {
-        panic!("proposal not active");
+        panic!();
     }
 
     let now = env.ledger().timestamp();
     if now > proposal.voting_ends_at {
-        panic!("voting period ended");
+        panic!();
     }
 
     // Check if already voted
     let vote_key = GovernanceKey::Vote(proposal_id, voter.clone());
     if env.storage().persistent().has(&vote_key) {
-        panic!("already voted");
+        panic!();
     }
 
     // Record vote
@@ -184,15 +185,15 @@ pub fn execute_proposal(env: Env, _caller: Address, proposal_id: u32) -> bool {
         .storage()
         .persistent()
         .get(&proposal_key)
-        .unwrap_or_else(|| panic!("proposal not found"));
+        .unwrap_optimized();
 
     if proposal.status != ProposalStatus::Active {
-        panic!("proposal not active");
+        panic!();
     }
 
     let now = env.ledger().timestamp();
     if now <= proposal.voting_ends_at {
-        panic!("voting period not ended");
+        panic!();
     }
 
     let total_votes = proposal.votes_for + proposal.votes_against + proposal.votes_abstain;
@@ -234,14 +235,14 @@ pub fn cancel_proposal(env: Env, proposer: Address, proposal_id: u32) {
         .storage()
         .persistent()
         .get(&proposal_key)
-        .unwrap_or_else(|| panic!("proposal not found"));
+        .unwrap_optimized();
 
     if proposal.proposer != proposer {
-        panic!("not proposer");
+        panic!();
     }
 
     if proposal.status != ProposalStatus::Active {
-        panic!("proposal not active");
+        panic!();
     }
 
     proposal.status = ProposalStatus::Cancelled;

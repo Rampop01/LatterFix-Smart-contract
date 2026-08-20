@@ -1,3 +1,4 @@
+use soroban_sdk::unwrap::UnwrapOptimized;
 #![cfg(kani)]
 
 // ============================================================================
@@ -87,7 +88,7 @@ fn verify_vault_deposit_no_overflow() {
 
     let result = pure_vault_deposit(vault_total, dep_balance, amount);
     assert!(result.is_some());
-    let (new_vault, new_dep) = result.unwrap();
+    let (new_vault, new_dep) = result.unwrap_optimized();
 
     assert!(new_vault >= 0);
     assert!(new_dep >= 0);
@@ -134,7 +135,7 @@ fn verify_vault_claim_no_underflow() {
 
     let result = pure_vault_claim(vault_total, dep_balance, amount);
     assert!(result.is_some());
-    let (new_vault, new_dep) = result.unwrap();
+    let (new_vault, new_dep) = result.unwrap_optimized();
 
     assert!(new_vault >= 0);
     assert!(new_dep >= 0);
@@ -168,7 +169,7 @@ fn verify_escrow_release_no_underflow() {
 
     let result = pure_escrow_release(balance, amount);
     assert!(result.is_some());
-    let new_balance = result.unwrap();
+    let new_balance = result.unwrap_optimized();
 
     assert!(new_balance >= 0);
     assert!(new_balance <= balance);
@@ -213,7 +214,7 @@ fn verify_escrow_lock_monotonic() {
 
     let result = pure_escrow_lock(balance, amount);
     assert!(result.is_some());
-    let new_balance = result.unwrap();
+    let new_balance = result.unwrap_optimized();
 
     assert!(new_balance >= balance);
     assert_eq!(new_balance - balance, amount);
@@ -382,7 +383,7 @@ fn verify_slippage_guard_bounds() {
 //
 // Invalid transitions must be rejected (return None).
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum MsState {
     Pending,
     Submitted,
@@ -429,7 +430,7 @@ fn verify_milestone_transitions_exhaustive() {
     match state {
         MsState::Pending | MsState::Rejected => {
             assert!(after_submit.is_some());
-            assert_eq!(after_submit.unwrap(), MsState::Submitted);
+            assert_eq!(after_submit.unwrap_optimized(), MsState::Submitted);
         }
         _ => {
             assert!(after_submit.is_none());
@@ -439,9 +440,9 @@ fn verify_milestone_transitions_exhaustive() {
     match state {
         MsState::Submitted => {
             assert!(after_approve.is_some());
-            assert_eq!(after_approve.unwrap(), MsState::Approved);
+            assert_eq!(after_approve.unwrap_optimized(), MsState::Approved);
             assert!(after_reject.is_some());
-            assert_eq!(after_reject.unwrap(), MsState::Rejected);
+            assert_eq!(after_reject.unwrap_optimized(), MsState::Rejected);
         }
         _ => {
             assert!(after_approve.is_none());

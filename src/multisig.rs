@@ -1,4 +1,5 @@
-use soroban_sdk::{contracttype, Address, Env, String, Vec};
+use soroban_sdk::unwrap::UnwrapOptimized;
+use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
 
 use crate::DataKey;
 
@@ -43,60 +44,43 @@ use crate::DataKey;
 // Types
 // ============================================================================
 
-/// Lifecycle state of a multisig proposal.
 #[contracttype]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 #[repr(u32)]
 pub enum MultisigProposalStatus {
-    /// Awaiting further approvals.
     Pending = 0,
-    /// Threshold reached; the action may be executed.
     Approved = 1,
-    /// Action has been applied on-chain. Terminal.
     Executed = 2,
-    /// Withdrawn before execution. Terminal.
     Cancelled = 3,
 }
 
-/// The state change a proposal will perform once executed.
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum MultisigAction {
-    /// Update the platform fee, in basis points (max 1000 = 10%).
     SetPlatformFee(u32),
-    /// Update the address that receives platform fees.
     SetFeeRecipient(Address),
-    /// Update the payment token contract.
     SetTokenContract(Address),
-    /// Move funds out of the contract treasury: `(token, recipient, amount)`.
     TreasuryTransfer(Address, Address, i128),
-    /// Rotate the signer set and threshold: `(signers, threshold)`.
     SetSigners(Vec<Address>, u32),
-    /// Resolve a disputed task with a multi-recipient split.
-    /// `(task_id, recipients, share_bps)`.
     ResolveDisputeSplit(u32, Vec<Address>, Vec<u32>),
 }
 
-/// A single signer's recorded approval — the on-chain ledger entry proving
-/// who approved what, and when.
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct MultisigApproval {
     pub signer: Address,
     pub approved_at: u64,
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct MultisigProposal {
     pub id: u32,
     pub proposer: Address,
-    pub description: String,
+    pub description: Symbol,
     pub action: MultisigAction,
     pub status: MultisigProposalStatus,
-    /// Full approval ledger, in the order approvals were received.
     pub approvals: Vec<MultisigApproval>,
-    /// Approvals required, snapshotted from config at creation time.
     pub threshold: u32,
     pub created_at: u64,
     pub expires_at: u64,
@@ -104,14 +88,11 @@ pub struct MultisigProposal {
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct MultisigConfig {
     pub signers: Vec<Address>,
-    /// Number of distinct signer approvals required to execute.
     pub threshold: u32,
-    /// Seconds a proposal stays actionable after creation.
     pub proposal_ttl: u64,
-    /// Execute immediately when the approving vote reaches the threshold.
     pub auto_execute: bool,
 }
 
@@ -122,11 +103,8 @@ pub enum MultisigKey {
     ProposalCount,
 }
 
-/// Default proposal lifetime: 7 days.
 pub const DEFAULT_PROPOSAL_TTL: u64 = 604_800;
 
-/// Upper bound on the signer set, keeping approval re-validation (a linear
-/// scan per approval) cheaply bounded.
 pub const MAX_SIGNERS: u32 = 20;
 
 // ============================================================================
@@ -139,42 +117,39 @@ fn require_admin(env: &Env, caller: &Address) {
         .storage()
         .instance()
         .get(&DataKey::Admin)
-        .unwrap_or_else(|| panic!("not initialized"));
+        .unwrap_optimized();
     if *caller != admin {
-        panic!("not admin");
+        panic!();
     }
 }
 
-/// Validate a prospective signer set and threshold, panicking if unusable.
 fn validate_signer_set(signers: &Vec<Address>, threshold: u32) {
     let count = signers.len();
     if count == 0 {
-        panic!("signer set cannot be empty");
+        panic!();
     }
     if count > MAX_SIGNERS {
-        panic!("signer set exceeds maximum");
+        panic!();
     }
     if threshold == 0 {
-        panic!("threshold must be greater than zero");
+        panic!();
     }
     if threshold > count {
-        panic!("threshold exceeds signer count");
+        panic!();
     }
 
     // Reject duplicates: a repeated address would otherwise inflate the
     // effective signer count while contributing only one approval.
     for i in 0..count {
-        let signer = signers.get(i).unwrap();
+        let signer = signers.get(i).unwrap_optimized();
         for j in (i + 1)..count {
-            if signers.get(j).unwrap() == signer {
-                panic!("duplicate signer in set");
+            if signers.get(j).unwrap_optimized() == signer {
+                panic!();
             }
         }
     }
 }
 
-/// Install the multisig signer set. Admin-only; this is the bootstrap step
-/// that hands ongoing parameter/treasury authority to the signer group.
 pub fn configure(
     env: Env,
     admin: Address,
@@ -196,12 +171,11 @@ pub fn configure(
     env.storage().instance().set(&MultisigKey::Config, &config);
 }
 
-/// Read the multisig config, panicking if it was never installed.
 pub fn get_config(env: &Env) -> MultisigConfig {
     env.storage()
         .instance()
         .get(&MultisigKey::Config)
-        .unwrap_or_else(|| panic!("multisig not configured"))
+        .unwrap_optimized()
 }
 
 pub fn is_signer(env: &Env, who: &Address) -> bool {
@@ -214,7 +188,7 @@ pub fn is_signer(env: &Env, who: &Address) -> bool {
 
 fn require_signer(env: &Env, who: &Address) {
     if !is_signer(env, who) {
-        panic!("not a multisig signer");
+        panic!();
     }
 }
 
@@ -233,18 +207,16 @@ fn save_proposal(env: &Env, proposal: &MultisigProposal) {
     );
 }
 
-/// Validate that an action is well-formed before signers spend approvals on
-/// it, so a proposal cannot reach threshold only to trap at execution.
 fn validate_action(env: &Env, action: &MultisigAction) {
     match action {
         MultisigAction::SetPlatformFee(bps) => {
             if *bps > 1000 {
-                panic!("platform fee cannot exceed 10%");
+                panic!();
             }
         }
         MultisigAction::TreasuryTransfer(_, _, amount) => {
             if *amount <= 0 {
-                panic!("transfer amount must be positive");
+                panic!();
             }
         }
         MultisigAction::SetSigners(signers, threshold) => {
@@ -252,18 +224,18 @@ fn validate_action(env: &Env, action: &MultisigAction) {
         }
         MultisigAction::ResolveDisputeSplit(_task_id, recipients, shares_bps) => {
             if recipients.len() == 0 {
-                panic!("recipients list cannot be empty");
+                panic!();
             }
             if recipients.len() != shares_bps.len() {
-                panic!("recipients and shares must have same length");
+                panic!();
             }
             let mut total_bps: u32 = 0;
             for i in 0..shares_bps.len() {
-                let bps = shares_bps.get(i).unwrap();
-                total_bps = total_bps.checked_add(bps).unwrap_or_else(|| panic!("share bps overflow"));
+                let bps = shares_bps.get(i).unwrap_optimized();
+                total_bps = total_bps.checked_add(bps).unwrap_optimized();
             }
             if total_bps != 10000 {
-                panic!("shares must sum to 10000 (100%)");
+                panic!();
             }
         }
         MultisigAction::SetFeeRecipient(_) | MultisigAction::SetTokenContract(_) => {
@@ -272,16 +244,10 @@ fn validate_action(env: &Env, action: &MultisigAction) {
     }
 }
 
-/// Create a proposal. Restricted to signers — an outsider should not be able
-/// to fill the ledger with proposals the signer set has to triage.
-///
-/// The proposer is *not* auto-approved: approval is an explicit, separately
-/// authorized act, so a 1-of-N misconfiguration cannot silently execute on
-/// creation alone.
 pub fn propose(
     env: Env,
     proposer: Address,
-    description: String,
+    description: Symbol,
     action: MultisigAction,
 ) -> u32 {
     proposer.require_auth();
@@ -320,30 +286,25 @@ pub fn propose(
     count
 }
 
-/// Record `signer`'s approval of `proposal_id`.
-///
-/// Returns the proposal's status after the vote. When the threshold is met the
-/// proposal moves to `Approved`, and — if `auto_execute` is enabled — the
-/// action is applied in the same call, returning `Executed`.
 pub fn vote_proposal(env: Env, signer: Address, proposal_id: u32) -> MultisigProposalStatus {
     signer.require_auth();
     require_signer(&env, &signer);
 
     let mut proposal = get_proposal(&env, proposal_id)
-        .unwrap_or_else(|| panic!("proposal not found"));
+        .unwrap_optimized();
 
     if proposal.status != MultisigProposalStatus::Pending {
-        panic!("proposal not pending");
+        panic!();
     }
 
     let now = env.ledger().timestamp();
     if now > proposal.expires_at {
-        panic!("proposal expired");
+        panic!();
     }
 
     for approval in proposal.approvals.iter() {
         if approval.signer == signer {
-            panic!("signer already approved");
+            panic!();
         }
     }
 
@@ -378,28 +339,23 @@ pub fn vote_proposal(env: Env, signer: Address, proposal_id: u32) -> MultisigPro
     proposal.status
 }
 
-/// Execute an `Approved` proposal, applying its action on-chain.
-///
-/// Any signer may trigger execution — the authority came from the approvals
-/// already on the ledger, not from the caller. Used when `auto_execute` is
-/// disabled, or to retry an execution whose earlier attempt trapped.
 pub fn execute_proposal(env: Env, caller: Address, proposal_id: u32) -> MultisigProposalStatus {
     caller.require_auth();
     require_signer(&env, &caller);
 
     let mut proposal = get_proposal(&env, proposal_id)
-        .unwrap_or_else(|| panic!("proposal not found"));
+        .unwrap_optimized();
 
     match proposal.status {
         MultisigProposalStatus::Approved => {}
-        MultisigProposalStatus::Pending => panic!("proposal not yet approved"),
-        MultisigProposalStatus::Executed => panic!("proposal already executed"),
-        MultisigProposalStatus::Cancelled => panic!("proposal cancelled"),
+        MultisigProposalStatus::Pending => panic!(),
+        MultisigProposalStatus::Executed => panic!(),
+        MultisigProposalStatus::Cancelled => panic!(),
     }
 
     let now = env.ledger().timestamp();
     if now > proposal.expires_at {
-        panic!("proposal expired");
+        panic!();
     }
 
     // Re-check against the live signer set: approvals from signers removed
@@ -412,7 +368,7 @@ pub fn execute_proposal(env: Env, caller: Address, proposal_id: u32) -> Multisig
         }
     }
     if valid < proposal.threshold {
-        panic!("approvals no longer meet threshold");
+        panic!();
     }
 
     apply_action(&env, &proposal.action);
@@ -424,28 +380,26 @@ pub fn execute_proposal(env: Env, caller: Address, proposal_id: u32) -> Multisig
     proposal.status
 }
 
-/// Cancel a proposal before execution. Allowed for the original proposer or
-/// the contract admin.
 pub fn cancel_proposal(env: Env, caller: Address, proposal_id: u32) {
     caller.require_auth();
 
     let mut proposal = get_proposal(&env, proposal_id)
-        .unwrap_or_else(|| panic!("proposal not found"));
+        .unwrap_optimized();
 
     match proposal.status {
         MultisigProposalStatus::Pending | MultisigProposalStatus::Approved => {}
-        MultisigProposalStatus::Executed => panic!("proposal already executed"),
-        MultisigProposalStatus::Cancelled => panic!("proposal already cancelled"),
+        MultisigProposalStatus::Executed => panic!(),
+        MultisigProposalStatus::Cancelled => panic!(),
     }
 
     let admin: Address = env
         .storage()
         .instance()
         .get(&DataKey::Admin)
-        .unwrap_or_else(|| panic!("not initialized"));
+        .unwrap_optimized();
 
     if caller != proposal.proposer && caller != admin {
-        panic!("only proposer or admin can cancel");
+        panic!();
     }
 
     proposal.status = MultisigProposalStatus::Cancelled;
@@ -456,15 +410,11 @@ pub fn cancel_proposal(env: Env, caller: Address, proposal_id: u32) {
 // Execution
 // ============================================================================
 
-/// Apply a proposal's encoded action to contract state.
-///
-/// Called only after threshold approval has been verified. Traps on failure,
-/// reverting the enclosing transaction.
 fn apply_action(env: &Env, action: &MultisigAction) {
     match action {
         MultisigAction::SetPlatformFee(bps) => {
             if *bps > 1000 {
-                panic!("platform fee cannot exceed 10%");
+                panic!();
             }
             env.storage().instance().set(&DataKey::PlatformFeeBps, bps);
         }
@@ -476,7 +426,7 @@ fn apply_action(env: &Env, action: &MultisigAction) {
         }
         MultisigAction::TreasuryTransfer(token, recipient, amount) => {
             if *amount <= 0 {
-                panic!("transfer amount must be positive");
+                panic!();
             }
             soroban_sdk::token::Client::new(env, token).transfer(
                 &env.current_contract_address(),
@@ -514,8 +464,6 @@ pub fn get_proposal_count(env: &Env) -> u32 {
         .unwrap_or(0)
 }
 
-/// Number of approvals on `proposal_id` that are still backed by a current
-/// signer — the figure compared against the threshold.
 pub fn get_approval_count(env: &Env, proposal_id: u32) -> u32 {
     let proposal = match get_proposal(env, proposal_id) {
         Some(p) => p,
@@ -538,7 +486,6 @@ pub fn has_approved(env: &Env, proposal_id: u32, signer: &Address) -> bool {
     }
 }
 
-/// All proposals still awaiting approvals and not yet expired.
 pub fn get_pending_proposals(env: &Env) -> Vec<MultisigProposal> {
     let count = get_proposal_count(env);
     let now = env.ledger().timestamp();

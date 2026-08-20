@@ -1,7 +1,8 @@
+use soroban_sdk::unwrap::UnwrapOptimized;
 use soroban_sdk::{contracttype, Env, Vec};
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum MilestoneStatus {
     Pending,
     Submitted,
@@ -11,20 +12,20 @@ pub enum MilestoneStatus {
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct Milestone {
     pub id: u32,
     pub task_id: u32,
-    pub title: soroban_sdk::String,
+    pub title: soroban_sdk::Symbol,
     pub amount: i128,
     pub status: MilestoneStatus,
     pub due_date: Option<u64>,
-    pub submission_url: Option<soroban_sdk::String>,
-    pub feedback: Option<soroban_sdk::String>,
+    pub submission_url: Option<soroban_sdk::Symbol>,
+    pub feedback: Option<soroban_sdk::Symbol>,
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct EscrowStats {
     pub total_locked: i128,
     pub total_released: i128,
@@ -44,7 +45,7 @@ pub enum EscrowKey {
 pub fn create_milestone(
     env: Env,
     task_id: u32,
-    title: soroban_sdk::String,
+    title: soroban_sdk::Symbol,
     amount: i128,
     due_date: Option<u64>,
 ) -> u32 {
@@ -74,18 +75,18 @@ pub fn submit_milestone(
     env: Env,
     task_id: u32,
     milestone_id: u32,
-    submission_url: soroban_sdk::String,
+    submission_url: soroban_sdk::Symbol,
 ) {
     let key = EscrowKey::Milestone(task_id, milestone_id);
     let mut milestone: Milestone = env
         .storage()
         .persistent()
         .get(&key)
-        .unwrap_or_else(|| panic!("milestone not found"));
+        .unwrap_optimized();
 
     if milestone.status != MilestoneStatus::Pending && milestone.status != MilestoneStatus::Rejected
     {
-        panic!("milestone cannot be submitted");
+        panic!();
     }
 
     milestone.status = MilestoneStatus::Submitted;
@@ -98,17 +99,17 @@ pub fn approve_milestone(
     env: Env,
     task_id: u32,
     milestone_id: u32,
-    feedback: Option<soroban_sdk::String>,
+    feedback: Option<soroban_sdk::Symbol>,
 ) -> i128 {
     let key = EscrowKey::Milestone(task_id, milestone_id);
     let mut milestone: Milestone = env
         .storage()
         .persistent()
         .get(&key)
-        .unwrap_or_else(|| panic!("milestone not found"));
+        .unwrap_optimized();
 
     if milestone.status != MilestoneStatus::Submitted {
-        panic!("milestone not submitted");
+        panic!();
     }
 
     milestone.status = MilestoneStatus::Approved;
@@ -124,16 +125,16 @@ pub fn approve_milestone(
     amount
 }
 
-pub fn reject_milestone(env: Env, task_id: u32, milestone_id: u32, feedback: soroban_sdk::String) {
+pub fn reject_milestone(env: Env, task_id: u32, milestone_id: u32, feedback: soroban_sdk::Symbol) {
     let key = EscrowKey::Milestone(task_id, milestone_id);
     let mut milestone: Milestone = env
         .storage()
         .persistent()
         .get(&key)
-        .unwrap_or_else(|| panic!("milestone not found"));
+        .unwrap_optimized();
 
     if milestone.status != MilestoneStatus::Submitted {
-        panic!("milestone not submitted");
+        panic!();
     }
 
     milestone.status = MilestoneStatus::Rejected;
@@ -212,7 +213,7 @@ pub fn release_escrow(env: Env, task_id: u32, amount: i128) {
     let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
 
     if current < amount {
-        panic!("insufficient escrow balance");
+        panic!();
     }
 
     let new_balance = current - amount;

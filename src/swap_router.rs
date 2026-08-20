@@ -1,28 +1,29 @@
-//! Multi-asset escrow swap router.
-//!
-//! Converts arbitrary incoming SAC tokens into an approved vault stablecoin
-//! (e.g. USDC/ORGUSD) through one or more DEX pool hops, guarded by an
-//! oracle-derived minimum-return check so the conversion cannot be pushed
-//! through a manipulated pool price.
-//!
-//! Pool contracts are expected to expose the `PoolClient` interface — a
-//! generic two-asset AMM pool that receives its input token via a direct
-//! `transfer` (mirroring the Uniswap V2 / Soroswap pair pattern: the router
-//! sends tokens to the pool, then calls `swap`, which pays the output out of
-//! its own reserves). The oracle is expected to expose the `OracleClient`
-//! interface — a single `price()` entry point returning the asset price
-//! scaled by `ORACLE_PRICE_DECIMALS`, mirroring the Reflector oracle's
-//! `lastprice`.
-//!
-//! Route resolution (path validity, approved destination, oracle pricing) is
-//! fully checked *before* any tokens are pulled from the sender, so an
-//! unresolved route never touches the sender's balance. If the pools
-//! themselves fail to deliver the oracle-guarded minimum return, the whole
-//! call traps and the host transaction reverts — including the initial pull
-//! — which is the standard, atomic "refund" pattern used by production DEX
-//! routers.
+use soroban_sdk::unwrap::UnwrapOptimized;
+// Multi-asset escrow swap router.
+//
+// Converts arbitrary incoming SAC tokens into an approved vault stablecoin
+// (e.g. USDC/ORGUSD) through one or more DEX pool hops, guarded by an
+// oracle-derived minimum-return check so the conversion cannot be pushed
+// through a manipulated pool price.
+//
+// Pool contracts are expected to expose the `PoolClient` interface — a
+// generic two-asset AMM pool that receives its input token via a direct
+// `transfer` (mirroring the Uniswap V2 / Soroswap pair pattern: the router
+// sends tokens to the pool, then calls `swap`, which pays the output out of
+// its own reserves). The oracle is expected to expose the `OracleClient`
+// interface — a single `price()` entry point returning the asset price
+// scaled by `ORACLE_PRICE_DECIMALS`, mirroring the Reflector oracle's
+// `lastprice`.
+//
+// Route resolution (path validity, approved destination, oracle pricing) is
+// fully checked *before* any tokens are pulled from the sender, so an
+// unresolved route never touches the sender's balance. If the pools
+// themselves fail to deliver the oracle-guarded minimum return, the whole
+// call traps and the host transaction reverts — including the initial pull
+// — which is the standard, atomic "refund" pattern used by production DEX
+// routers.
 
-use soroban_sdk::{contractclient, contracttype, Address, Env, String, Vec};
+use soroban_sdk::{contractclient, contracttype, Address, Env, Symbol, Vec};
 
 use crate::DataKey;
 
@@ -36,10 +37,6 @@ const BPS_DENOMINATOR: i128 = 10_000;
 
 #[contractclient(name = "PoolClient")]
 pub trait PoolInterface {
-    /// Swap `amount_in` of `token_in` (already transferred to the pool by the
-    /// caller) for `token_out`, paying the result to `to`. Implementations
-    /// should reject if the computed output is below `min_amount_out`.
-    /// Returns the actual amount of `token_out` paid out.
     fn swap(
         env: Env,
         amount_in: i128,
@@ -52,8 +49,6 @@ pub trait PoolInterface {
 
 #[contractclient(name = "OracleClient")]
 pub trait OracleInterface {
-    /// Latest price of `asset`, scaled by 10^ORACLE_PRICE_DECIMALS.
-    /// Returns `None` if no fresh price is available.
     fn price(env: Env, asset: Address) -> Option<i128>;
 }
 
@@ -62,26 +57,22 @@ pub trait OracleInterface {
 // ============================================================================
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct SwapRoute {
-    /// Token addresses along the route: `[token_in, hop_1, ..., stablecoin_out]`.
     pub path: Vec<Address>,
-    /// Pool contract address for each hop; `pools.len() == path.len() - 1`.
     pub pools: Vec<Address>,
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct RouterConfig {
     pub oracle: Address,
     pub max_hops: u32,
-    /// Default slippage tolerance in basis points, applied when a caller
-    /// doesn't supply their own.
     pub default_slippage_bps: u32,
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Clone, Eq, PartialEq, Default)]
 pub struct SwapRouterStats {
     pub total_conversions: u32,
     pub total_refunds: u32,
@@ -89,10 +80,10 @@ pub struct SwapRouterStats {
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum ConversionOutcome {
     Converted(Address, i128), // (token_out, amount_out)
-    Refunded(String),         // reason
+    Refunded(Symbol),         // reason
 }
 
 #[contracttype]
@@ -113,9 +104,9 @@ fn require_admin(env: &Env, caller: &Address) {
         .storage()
         .instance()
         .get(&DataKey::Admin)
-        .unwrap_or_else(|| panic!("not initialized"));
+        .unwrap_optimized();
     if *caller != admin {
-        panic!("not admin");
+        panic!();
     }
 }
 
@@ -129,10 +120,10 @@ pub fn configure(
     require_admin(&env, &admin);
 
     if max_hops == 0 {
-        panic!("max hops must be positive");
+        panic!();
     }
     if default_slippage_bps as i128 > BPS_DENOMINATOR {
-        panic!("slippage bps out of range");
+        panic!();
     }
 
     let config = RouterConfig {
@@ -149,7 +140,7 @@ pub fn get_config(env: Env) -> RouterConfig {
     env.storage()
         .instance()
         .get(&SwapRouterKey::Config)
-        .unwrap_or_else(|| panic!("swap router not configured"))
+        .unwrap_optimized()
 }
 
 pub fn add_approved_stablecoin(env: Env, admin: Address, stablecoin: Address) {
@@ -223,9 +214,9 @@ fn execute_route(env: &Env, route: &SwapRoute, amount_in: i128, vault: &Address)
     let this_contract = env.current_contract_address();
 
     for i in 0..hops {
-        let token_in = route.path.get(i).unwrap();
-        let token_out = route.path.get(i + 1).unwrap();
-        let pool = route.pools.get(i).unwrap();
+        let token_in = route.path.get(i).unwrap_optimized();
+        let token_out = route.path.get(i + 1).unwrap_optimized();
+        let pool = route.pools.get(i).unwrap_optimized();
         let is_last_hop = i + 1 == hops;
         let hop_recipient = if is_last_hop {
             vault.clone()
@@ -270,13 +261,13 @@ pub fn withdraw_stablecoin(env: Env, owner: Address, stablecoin: Address, amount
     owner.require_auth();
 
     if amount <= 0 {
-        panic!("amount must be positive");
+        panic!();
     }
 
     let key = SwapRouterKey::VaultBalance(owner.clone(), stablecoin.clone());
     let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
     if amount > current {
-        panic!("insufficient vault balance");
+        panic!();
     }
     env.storage().persistent().set(&key, &(current - amount));
 
@@ -312,15 +303,6 @@ fn update_stats(env: &Env, conversions_delta: u32, refunds_delta: u32, stablecoi
 // Main entrypoint
 // ============================================================================
 
-/// Convert `amount_in` of `token_in` held by `sender` into one of the
-/// approved vault stablecoins, following `route`.
-///
-/// Route shape, destination-stablecoin approval, and oracle pricing are all
-/// validated *before* any funds move — if any of those checks fail, nothing
-/// is pulled from `sender` and `ConversionOutcome::Refunded` is returned. If
-/// the swap itself fails to clear the oracle-derived minimum-return guard,
-/// the whole call traps and the transaction (including the initial pull) is
-/// reverted by the host, so the sender is refunded atomically.
 pub fn convert_incoming_deposit(
     env: Env,
     sender: Address,
@@ -332,31 +314,31 @@ pub fn convert_incoming_deposit(
     sender.require_auth();
 
     if amount_in <= 0 {
-        panic!("amount must be positive");
+        panic!();
     }
 
     let config = get_config(env.clone());
     let slippage = slippage_bps.unwrap_or(config.default_slippage_bps);
     if slippage as i128 > BPS_DENOMINATOR {
-        panic!("slippage bps out of range");
+        panic!();
     }
 
     if !validate_route(&env, &config, &token_in, &route) {
         update_stats(&env, 0, 1, 0);
-        return ConversionOutcome::Refunded(String::from_str(
+        return ConversionOutcome::Refunded(Symbol::new(
             &env,
             "swap route could not be resolved",
         ));
     }
 
-    let stablecoin_out = route.path.get(route.path.len() - 1).unwrap();
+    let stablecoin_out = route.path.get(route.path.len() - 1).unwrap_optimized();
 
     let oracle = OracleClient::new(&env, &config.oracle);
     let price_in = match oracle.try_price(&token_in) {
         Ok(Ok(Some(p))) if p > 0 => p,
         _ => {
             update_stats(&env, 0, 1, 0);
-            return ConversionOutcome::Refunded(String::from_str(
+            return ConversionOutcome::Refunded(Symbol::new(
                 &env,
                 "no oracle price for input asset",
             ));
@@ -366,7 +348,7 @@ pub fn convert_incoming_deposit(
         Ok(Ok(Some(p))) if p > 0 => p,
         _ => {
             update_stats(&env, 0, 1, 0);
-            return ConversionOutcome::Refunded(String::from_str(
+            return ConversionOutcome::Refunded(Symbol::new(
                 &env,
                 "no oracle price for output asset",
             ));
@@ -377,7 +359,7 @@ pub fn convert_incoming_deposit(
     // conversion against a manipulated/thin DEX pool price.
     let expected_out = amount_in
         .checked_mul(price_in)
-        .unwrap_or_else(|| panic!("overflow computing expected output"))
+        .unwrap_optimized()
         / price_out;
     let min_out = expected_out * (BPS_DENOMINATOR - slippage as i128) / BPS_DENOMINATOR;
 
@@ -392,7 +374,7 @@ pub fn convert_incoming_deposit(
     let amount_out = execute_route(&env, &route, amount_in, &vault);
 
     if amount_out < min_out {
-        panic!("swap output below minimum acceptable return");
+        panic!();
     }
 
     credit_vault_balance(&env, &sender, &stablecoin_out, amount_out);
