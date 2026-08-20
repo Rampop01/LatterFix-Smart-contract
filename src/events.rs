@@ -404,3 +404,43 @@ pub fn emit_upgrade_timelock_updated(
         (old_seconds, new_seconds, env.ledger().timestamp()),
     );
 }
+
+// ── Reward Treasury Events ─────────────────────────────────────────────────
+
+pub fn emit_treasury_funded(env: &Env, funder: Address, amount: i128, new_balance: i128) {
+    env.events().publish(
+        (symbol_short!("trs_fund"), funder),
+        (amount, new_balance, env.ledger().timestamp()),
+    );
+}
+
+pub fn emit_vesting_schedule_created(
+    env: &Env,
+    schedule_id: u32,
+    beneficiary: Address,
+    total_amount: i128,
+    decay_rate_bps: u32,
+) {
+    env.events().publish(
+        (symbol_short!("vst_new"), schedule_id),
+        (
+            beneficiary,
+            total_amount,
+            decay_rate_bps,
+            env.ledger().timestamp(),
+        ),
+    );
+}
+
+pub fn emit_vesting_claimed(
+    env: &Env,
+    schedule_id: u32,
+    beneficiary: Address,
+    amount: i128,
+    total_claimed: i128,
+) {
+    env.events().publish(
+        (symbol_short!("vst_clm"), schedule_id),
+        (beneficiary, amount, total_claimed, env.ledger().timestamp()),
+    );
+}
