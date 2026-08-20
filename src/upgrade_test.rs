@@ -1,7 +1,7 @@
-use soroban_sdk::unwrap::UnwrapOptimized;
 #![cfg(test)]
 #![allow(deprecated)]
 
+use soroban_sdk::unwrap::UnwrapOptimized;
 use crate::access_control::Role;
 use crate::upgrade::{UpgradeStatus, DEFAULT_TIMELOCK_SECONDS, MIN_TIMELOCK_SECONDS};
 use crate::{TaskManagerContract, TaskManagerContractClient};

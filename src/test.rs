@@ -1,7 +1,7 @@
-use soroban_sdk::unwrap::UnwrapOptimized;
 #![cfg(test)]
 #![allow(deprecated)]
 
+use soroban_sdk::unwrap::UnwrapOptimized;
 use crate::{TaskManagerContract, TaskManagerContractClient};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::testutils::Ledger as _;
