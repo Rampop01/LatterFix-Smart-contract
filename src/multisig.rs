@@ -72,6 +72,9 @@ pub enum MultisigAction {
     TreasuryTransfer(Address, Address, i128),
     /// Rotate the signer set and threshold: `(signers, threshold)`.
     SetSigners(Vec<Address>, u32),
+    /// Resolve a disputed task with a multi-recipient split.
+    /// `(task_id, recipients, share_bps)`.
+    ResolveDisputeSplit(u32, Vec<Address>, Vec<u32>),
 }
 
 /// A single signer's recorded approval — the on-chain ledger entry proving
@@ -246,6 +249,22 @@ fn validate_action(env: &Env, action: &MultisigAction) {
         }
         MultisigAction::SetSigners(signers, threshold) => {
             validate_signer_set(signers, *threshold);
+        }
+        MultisigAction::ResolveDisputeSplit(_task_id, recipients, shares_bps) => {
+            if recipients.len() == 0 {
+                panic!("recipients list cannot be empty");
+            }
+            if recipients.len() != shares_bps.len() {
+                panic!("recipients and shares must have same length");
+            }
+            let mut total_bps: u32 = 0;
+            for i in 0..shares_bps.len() {
+                let bps = shares_bps.get(i).unwrap();
+                total_bps = total_bps.checked_add(bps).unwrap_or_else(|| panic!("share bps overflow"));
+            }
+            if total_bps != 10000 {
+                panic!("shares must sum to 10000 (100%)");
+            }
         }
         MultisigAction::SetFeeRecipient(_) | MultisigAction::SetTokenContract(_) => {
             let _ = env;
@@ -471,6 +490,9 @@ fn apply_action(env: &Env, action: &MultisigAction) {
             config.signers = signers.clone();
             config.threshold = *threshold;
             env.storage().instance().set(&MultisigKey::Config, &config);
+        }
+        MultisigAction::ResolveDisputeSplit(task_id, recipients, shares_bps) => {
+            crate::resolve_dispute_split(env.clone(), *task_id, recipients.clone(), shares_bps.clone());
         }
     }
 }
