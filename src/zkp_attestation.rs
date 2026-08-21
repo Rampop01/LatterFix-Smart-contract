@@ -1,4 +1,5 @@
-use soroban_sdk::{contracttype, symbol_short, Address, Bytes, BytesN, Env, String, Vec};
+use soroban_sdk::unwrap::UnwrapOptimized;
+use soroban_sdk::{contracttype, symbol_short, Address, Bytes, BytesN, Env, Symbol, Vec};
 
 // Zero-Knowledge Proof (ZKP) Identity Attestation Module
 //
@@ -21,122 +22,75 @@ use soroban_sdk::{contracttype, symbol_short, Address, Bytes, BytesN, Env, Strin
 // Encoding constants (BLS12-381, uncompressed)
 // ──────────────────────────────────────────────────────────────────────────
 
-/// Byte length of an uncompressed BLS12-381 G1 point (`A`, `C`, and every IC).
 const G1_POINT_LEN: u32 = 96;
-/// Byte length of an uncompressed BLS12-381 G2 point (`B`).
 const G2_POINT_LEN: u32 = 192;
-/// Byte length of a field element used as a public signal / nullifier.
 const FIELD_ELEMENT_LEN: u32 = 32;
-/// Upper bound on public signals accepted per attestation (DoS guard).
 const MAX_PUBLIC_SIGNALS: u32 = 32;
 
 // ──────────────────────────────────────────────────────────────────────────
 // Data Types
 // ──────────────────────────────────────────────────────────────────────────
 
-/// A Groth16 zk-SNARK proof payload.
-///
-/// Points are carried as opaque serialized blobs (`A`, `C` are G1; `B` is G2)
-/// so the wrapper stays agnostic to the exact host binding; structural checks
-/// enforce the expected encoding lengths.
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct Groth16Proof {
-    /// G1 point `A`.
     pub a: Bytes,
-    /// G2 point `B`.
     pub b: Bytes,
-    /// G1 point `C`.
     pub c: Bytes,
 }
 
-/// Verification key for a single proving circuit.
-///
-/// `ic` holds the `IC` vector of the Groth16 verification key: for a circuit
-/// with `n` public signals it MUST contain exactly `n + 1` G1 points.
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct VerificationKey {
-    /// Human-readable circuit identifier, e.g. "kyc-tier-1".
-    pub circuit_id: String,
-    /// Curve label, e.g. "BLS12-381". Informational metadata for indexers.
-    pub curve: String,
-    /// Serialized `alpha_g1` / `beta_g2` pairing term of the VK.
+    pub circuit_id: Symbol,
+    pub curve: Symbol,
     pub alpha_beta: Bytes,
-    /// Serialized `gamma_g2` term of the VK.
     pub gamma: Bytes,
-    /// Serialized `delta_g2` term of the VK.
     pub delta: Bytes,
-    /// `IC` vector: one G1 point per public signal, plus a constant term.
     pub ic: Vec<Bytes>,
-    /// Ledger timestamp at which the key was registered.
     pub registered_at: u64,
-    /// Admin address that registered the key.
     pub registered_by: Address,
 }
 
-/// A private identity attestation presented by an employee.
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct IdentityAttestation {
-    /// Circuit whose VK the proof should be checked against.
-    pub circuit_id: String,
-    /// The employee presenting the attestation (authorizes the call).
+    pub circuit_id: Symbol,
     pub subject: Address,
-    /// The Groth16 proof.
     pub proof: Groth16Proof,
-    /// Public signals (field elements) fed to the verifier.
     pub public_signals: Vec<BytesN<32>>,
-    /// Per-identity/per-circuit replay tag.
     pub nullifier: BytesN<32>,
-    /// `H(nullifier || public_signals)` — binds the nullifier to the signals.
     pub attestation_commitment: BytesN<32>,
 }
 
-/// Record written on a successful attestation.
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, kani), derive(Debug))]
 pub struct AttestationReceipt {
-    /// Spent nullifier this receipt is keyed by.
     pub nullifier: BytesN<32>,
-    /// Attested subject.
     pub subject: Address,
-    /// Circuit the proof was verified against.
-    pub circuit_id: String,
-    /// Ledger timestamp of verification.
+    pub circuit_id: Symbol,
     pub verified_at: u64,
 }
 
-/// Reasons an attestation can be rejected.
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, kani), derive(Debug))]
 pub enum AttestationError {
-    /// No VK registered for the referenced circuit.
     CircuitNotRegistered,
-    /// Proof points have the wrong encoding length or are the zero blob.
     MalformedProof,
-    /// `public_signals` count does not match the VK's `IC` arity.
     PublicSignalMismatch,
-    /// `attestation_commitment` does not equal `H(nullifier || signals)`.
     CommitmentMismatch,
-    /// The nullifier has already been attested (replay).
     NullifierAlreadyUsed,
-    /// The Groth16 pairing equation did not hold.
     PairingCheckFailed,
 }
 
-/// Storage keys for the ZKP attestation module.
 #[contracttype]
 pub enum ZkStorageKey {
-    /// Module admin (may register verification keys).
     Admin,
-    /// Verification key by circuit id.
-    Vk(String),
-    /// Spent-nullifier flag.
+    Vk(Symbol),
     Nullifier(BytesN<32>),
-    /// Attestation receipt by nullifier.
     Attestation(BytesN<32>),
-    /// Running count of successful attestations.
     AttestationCount,
 }
 
@@ -144,29 +98,26 @@ pub enum ZkStorageKey {
 // Administration
 // ──────────────────────────────────────────────────────────────────────────
 
-/// Initialize the module, recording the admin allowed to register circuits.
 pub fn initialize(env: Env, admin: Address) {
     if env.storage().instance().has(&ZkStorageKey::Admin) {
-        panic!("zkp module already initialized");
+        panic!();
     }
     env.storage().instance().set(&ZkStorageKey::Admin, &admin);
 }
 
-/// Return the configured admin address.
 pub fn get_admin(env: Env) -> Address {
     env.storage()
         .instance()
         .get(&ZkStorageKey::Admin)
-        .unwrap_or_else(|| panic!("zkp module not initialized"))
+        .unwrap_optimized()
 }
 
-/// Register (or overwrite) the verification key for a circuit. Admin only.
 #[allow(clippy::too_many_arguments)]
 pub fn register_verification_key(
     env: Env,
     admin: Address,
-    circuit_id: String,
-    curve: String,
+    circuit_id: Symbol,
+    curve: Symbol,
     alpha_beta: Bytes,
     gamma: Bytes,
     delta: Bytes,
@@ -176,12 +127,12 @@ pub fn register_verification_key(
 
     let stored_admin = get_admin(env.clone());
     if admin != stored_admin {
-        panic!("only admin can register verification keys");
+        panic!();
     }
 
     // A well-formed VK needs at least the constant IC term.
     if ic.is_empty() {
-        panic!("verification key must contain at least one IC element");
+        panic!();
     }
 
     let vk = VerificationKey {
@@ -205,8 +156,7 @@ pub fn register_verification_key(
     );
 }
 
-/// Fetch the verification key registered for a circuit, if any.
-pub fn get_verification_key(env: Env, circuit_id: String) -> Option<VerificationKey> {
+pub fn get_verification_key(env: Env, circuit_id: Symbol) -> Option<VerificationKey> {
     env.storage()
         .persistent()
         .get(&ZkStorageKey::Vk(circuit_id))
@@ -216,7 +166,6 @@ pub fn get_verification_key(env: Env, circuit_id: String) -> Option<Verification
 // Nullifier tracking (replay protection)
 // ──────────────────────────────────────────────────────────────────────────
 
-/// Whether a nullifier has already been consumed by a successful attestation.
 pub fn is_nullifier_used(env: Env, nullifier: BytesN<32>) -> bool {
     env.storage()
         .persistent()
@@ -230,11 +179,6 @@ fn spend_nullifier(env: &Env, nullifier: &BytesN<32>) {
         .set(&ZkStorageKey::Nullifier(nullifier.clone()), &true);
 }
 
-/// Deterministically derive `H(nullifier || public_signals)`.
-///
-/// Binding the nullifier to the exact public signals prevents an attacker from
-/// lifting a valid proof onto a different nullifier (or swapping signals under a
-/// fixed nullifier) to mint a fresh, "unspent" attestation.
 pub fn compute_attestation_commitment(
     env: Env,
     nullifier: BytesN<32>,
@@ -252,11 +196,6 @@ pub fn compute_attestation_commitment(
 // Proof verification
 // ──────────────────────────────────────────────────────────────────────────
 
-/// Verify a private identity attestation and, on success, consume its
-/// nullifier and persist a receipt.
-///
-/// Rejections are returned as [`AttestationError`] rather than panicking so
-/// callers (and payroll flows) can branch on the specific failure.
 pub fn verify_attestation(
     env: Env,
     attestation: IdentityAttestation,
@@ -317,14 +256,12 @@ pub fn verify_attestation(
     Ok(receipt)
 }
 
-/// Fetch the receipt for a previously verified attestation, if any.
 pub fn get_attestation(env: Env, nullifier: BytesN<32>) -> Option<AttestationReceipt> {
     env.storage()
         .persistent()
         .get(&ZkStorageKey::Attestation(nullifier))
 }
 
-/// Total number of successful attestations recorded.
 pub fn attestation_count(env: Env) -> u64 {
     env.storage()
         .instance()
@@ -357,7 +294,6 @@ fn record_attestation(env: &Env, attestation: &IdentityAttestation) -> Attestati
     receipt
 }
 
-/// Validate that the proof and VK encodings are structurally well-formed.
 fn validate_proof_structure(vk: &VerificationKey, proof: &Groth16Proof) -> bool {
     // Point encoding lengths.
     if proof.a.len() != G1_POINT_LEN
@@ -392,26 +328,6 @@ fn is_zero_bytes(bytes: &Bytes) -> bool {
     true
 }
 
-/// Groth16 pairing-equation verifier — the host-binding wrapper.
-///
-/// The Groth16 check is the pairing equation
-///
-/// ```text
-///   e(A, B) == e(alpha, beta) · e(vk_x, gamma) · e(C, delta)
-/// ```
-///
-/// where `vk_x = IC[0] + Σ public_signals[i] · IC[i+1]`.
-///
-/// Evaluating it requires BLS12-381 pairing arithmetic, exposed as Soroban host
-/// functions (CAP-0059) starting at Protocol 22. This crate targets
-/// soroban-sdk 21.x, where that host binding is not yet available, so this
-/// function isolates the seam: every predicate that *is* verifiable without the
-/// pairing host — encoding well-formedness, public-input arity, and the
-/// nullifier/signal commitment binding — is enforced by [`verify_attestation`]
-/// before we get here. Replace the body with
-/// `env.crypto().bls12_381().pairing_check(...)` once the deployment target
-/// moves to Protocol 22; the module's public API and storage layout are
-/// unaffected.
 fn verify_groth16_pairing(
     _env: &Env,
     vk: &VerificationKey,

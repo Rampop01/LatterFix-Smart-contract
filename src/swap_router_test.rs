@@ -41,7 +41,7 @@ impl MockPool {
         let amount_out = amount_in * rate / 10_000;
 
         if amount_out < min_amount_out {
-            panic!("mock pool: insufficient output");
+            panic!();
         }
 
         soroban_sdk::token::Client::new(&env, &token_out).transfer(
@@ -154,7 +154,7 @@ fn test_direct_swap_success() {
             assert_eq!(token_out, stablecoin);
             assert_eq!(amount_out, 1_000);
         }
-        ConversionOutcome::Refunded(_) => panic!("expected a successful conversion"),
+        ConversionOutcome::Refunded(_) => panic!(),
     }
 
     let token_in_client = soroban_sdk::token::Client::new(&env, &token_in);
@@ -213,7 +213,7 @@ fn test_multi_hop_swap_success() {
             assert_eq!(token_out, stablecoin);
             assert_eq!(amount_out, 960);
         }
-        ConversionOutcome::Refunded(_) => panic!("expected a successful multi-hop conversion"),
+        ConversionOutcome::Refunded(_) => panic!(),
     }
 
     assert_eq!(client.get_vault_balance(&sender, &stablecoin), 960);

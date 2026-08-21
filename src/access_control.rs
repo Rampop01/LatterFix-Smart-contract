@@ -1,21 +1,18 @@
+use soroban_sdk::unwrap::UnwrapOptimized;
 use soroban_sdk::{contracttype, Address, Env, Vec};
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum Role {
     Admin,
     Manager,
     Moderator,
     Verifier,
-    /// Emergency guardian: authorized to veto a pending contract WASM
-    /// upgrade during its timelock window (see `upgrade.rs`). Deliberately
-    /// separate from `Admin` so upgrade proposals can be checked by a party
-    /// other than the one proposing them.
     Guardian,
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct RoleData {
     pub role: Role,
     pub granted_at: u64,
@@ -36,10 +33,10 @@ pub fn grant_role(env: Env, admin: Address, user: Address, role: Role) {
         .storage()
         .instance()
         .get(&AccessControlKey::Admin)
-        .unwrap_or_else(|| panic!("not initialized"));
+        .unwrap_optimized();
 
     if admin != stored_admin {
-        panic!("only admin can grant roles");
+        panic!();
     }
 
     let key = AccessControlKey::Role(user.clone());
@@ -72,10 +69,10 @@ pub fn revoke_role(env: Env, admin: Address, user: Address) {
         .storage()
         .instance()
         .get(&AccessControlKey::Admin)
-        .unwrap_or_else(|| panic!("not initialized"));
+        .unwrap_optimized();
 
     if admin != stored_admin {
-        panic!("only admin can revoke roles");
+        panic!();
     }
 
     let key = AccessControlKey::Role(user.clone());
@@ -117,6 +114,6 @@ pub fn get_role(env: Env, user: Address) -> Option<RoleData> {
 
 pub fn require_role(env: Env, user: Address, role: Role) {
     if !has_role(env.clone(), user, role) {
-        panic!("access denied: required role not found");
+        panic!();
     }
 }

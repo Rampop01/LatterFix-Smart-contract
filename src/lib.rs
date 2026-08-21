@@ -1,4 +1,5 @@
 #![no_std]
+use soroban_sdk::unwrap::UnwrapOptimized;
 
 pub mod access_control;
 pub mod escrow;
@@ -31,14 +32,14 @@ mod treasury_test;
 #[cfg(test)]
 mod upgrade_test;
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
 
 // ============================================================================
 // Task Management Types
 // ============================================================================
 
 #[contracttype]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 #[repr(u32)]
 pub enum TaskStatus {
     Open = 0,
@@ -51,16 +52,16 @@ pub enum TaskStatus {
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct Task {
     pub id: u32,
-    pub title: String,
-    pub description: String,
+    pub title: Symbol,
+    pub description: Symbol,
     pub reward: i128,
     pub assignee: Option<Address>,
     pub status: TaskStatus,
     pub created_by: Address,
-    pub tags: Vec<String>,
+    pub tags: Vec<Symbol>,
     pub category_id: Option<u32>,
     pub deadline: Option<u64>,
     pub created_at: u64,
@@ -68,7 +69,7 @@ pub struct Task {
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct TaskWithMilestones {
     pub task: Task,
     pub milestones: Vec<escrow::Milestone>,
@@ -80,7 +81,7 @@ pub struct TaskWithMilestones {
 // ============================================================================
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum DataKey {
     Admin,
     PlatformFeeBps,
@@ -98,20 +99,16 @@ pub enum DataKey {
 // Dispute Split Types
 // ============================================================================
 
-/// A single recipient share in a dispute split.
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct DisputeSplitRecipient {
     pub address: Address,
-    /// Percentage in basis points (100 = 1%, 10000 = 100%).
     pub share_bps: u32,
 }
 
-/// The full split instruction attached to a dispute resolution.
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct DisputeSplit {
-    /// Ordered list of recipients and their basis-point shares.
     pub recipients: Vec<DisputeSplitRecipient>,
 }
 
@@ -136,12 +133,12 @@ impl TaskManagerContract {
         fee_recipient: Address,
     ) {
         if env.storage().instance().has(&DataKey::Initialized) {
-            panic!("already initialized");
+            panic!();
         }
 
         // Validate fee (max 10%)
         if platform_fee_bps > 1000 {
-            panic!("platform fee cannot exceed 10%");
+            panic!();
         }
 
         env.storage().instance().set(&DataKey::Admin, &admin);
@@ -180,10 +177,10 @@ impl TaskManagerContract {
     pub fn create_task(
         env: Env,
         creator: Address,
-        title: String,
-        description: String,
+        title: Symbol,
+        description: Symbol,
         reward: i128,
-        tags: Vec<String>,
+        tags: Vec<Symbol>,
     ) -> u32 {
         creator.require_auth();
 
@@ -195,14 +192,14 @@ impl TaskManagerContract {
         );
 
         if reward <= 0 {
-            panic!("reward must be positive");
+            panic!();
         }
 
         let token_contract: Address = env
             .storage()
             .instance()
             .get(&DataKey::TokenContract)
-            .unwrap_or_else(|| panic!("not initialized"));
+            .unwrap_optimized();
 
         // Transfer reward from creator to the contract
         let token_client = soroban_sdk::token::Client::new(&env, &token_contract);
@@ -257,22 +254,22 @@ impl TaskManagerContract {
     pub fn create_task_with_milestones(
         env: Env,
         creator: Address,
-        title: String,
-        description: String,
-        milestones: Vec<(String, i128)>, // (title, amount)
-        tags: Vec<String>,
+        title: Symbol,
+        description: Symbol,
+        milestones: Vec<(Symbol, i128)>, // (title, amount)
+        tags: Vec<Symbol>,
     ) -> u32 {
         creator.require_auth();
 
         // Calculate total reward from milestones
         let mut total_reward: i128 = 0;
         for i in 0..milestones.len() {
-            let milestone = milestones.get(i).unwrap();
+            let milestone = milestones.get(i).unwrap_optimized();
             total_reward += milestone.1;
         }
 
         if total_reward <= 0 {
-            panic!("total milestone amount must be positive");
+            panic!();
         }
 
         // Create the task
@@ -306,10 +303,10 @@ impl TaskManagerContract {
             .storage()
             .instance()
             .get(&DataKey::Task(task_id))
-            .unwrap_or_else(|| panic!("task not found"));
+            .unwrap_optimized();
 
         if task.status != TaskStatus::Open {
-            panic!("task is not open");
+            panic!();
         }
 
         task.assignee = Some(assignee.clone());
@@ -321,7 +318,7 @@ impl TaskManagerContract {
         events::emit_task_assigned(&env, task_id, assignee);
     }
 
-    pub fn submit_work(env: Env, assignee: Address, task_id: u32, delivery_url: String) {
+    pub fn submit_work(env: Env, assignee: Address, task_id: u32, delivery_url: Symbol) {
         assignee.require_auth();
 
         pausable::require_not_paused(
@@ -334,14 +331,14 @@ impl TaskManagerContract {
             .storage()
             .instance()
             .get(&DataKey::Task(task_id))
-            .unwrap_or_else(|| panic!("task not found"));
+            .unwrap_optimized();
 
         if task.assignee.as_ref() != Some(&assignee) {
-            panic!("caller is not the assignee");
+            panic!();
         }
 
         if task.status != TaskStatus::InProgress {
-            panic!("task is not in progress");
+            panic!();
         }
 
         task.status = TaskStatus::Completed;
@@ -365,16 +362,16 @@ impl TaskManagerContract {
             .storage()
             .instance()
             .get(&DataKey::Task(task_id))
-            .unwrap_or_else(|| panic!("task not found"));
+            .unwrap_optimized();
 
         if task.status != TaskStatus::Completed {
-            panic!("task is not completed");
+            panic!();
         }
 
         // Verify caller is creator or admin
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap_optimized();
         if caller != task.created_by && caller != admin {
-            panic!("not authorized to complete task");
+            panic!();
         }
 
         let platform_fee_bps: u32 = env
@@ -386,12 +383,12 @@ impl TaskManagerContract {
             .storage()
             .instance()
             .get(&DataKey::FeeRecipient)
-            .unwrap();
+            .unwrap_optimized();
         let token_contract: Address = env
             .storage()
             .instance()
             .get(&DataKey::TokenContract)
-            .unwrap();
+            .unwrap_optimized();
 
         let fee = (task.reward * platform_fee_bps as i128) / 10000;
         let payout = task.reward - fee;
@@ -401,7 +398,7 @@ impl TaskManagerContract {
         let assignee = task
             .assignee
             .clone()
-            .unwrap_or_else(|| panic!("no assignee"));
+            .unwrap_optimized();
 
         if fee > 0 {
             token_client.transfer(&env.current_contract_address(), &fee_recipient, &fee);
@@ -424,7 +421,7 @@ impl TaskManagerContract {
             reputation::points_for_event(reputation::ReputationEventType::TaskVerified),
             reputation::ReputationEventType::TaskVerified,
             Some(task_id),
-            String::from_str(&env, "Task verified and completed"),
+            Symbol::new(&env, "Task verified and completed"),
         );
 
         events::emit_task_completed(&env, task_id, assignee, payout, fee);
@@ -450,21 +447,21 @@ impl TaskManagerContract {
             .storage()
             .instance()
             .get(&DataKey::Task(task_id))
-            .unwrap_or_else(|| panic!("task not found"));
+            .unwrap_optimized();
 
         if task.created_by != creator {
-            panic!("not task creator");
+            panic!();
         }
 
         if task.status != TaskStatus::Open {
-            panic!("task is not open");
+            panic!();
         }
 
         let token_contract: Address = env
             .storage()
             .instance()
             .get(&DataKey::TokenContract)
-            .unwrap();
+            .unwrap_optimized();
         let token_client = soroban_sdk::token::Client::new(&env, &token_contract);
         token_client.transfer(&env.current_contract_address(), &creator, &task.reward);
 
@@ -496,14 +493,14 @@ impl TaskManagerContract {
             .storage()
             .instance()
             .get(&DataKey::Task(task_id))
-            .unwrap_or_else(|| panic!("task not found"));
+            .unwrap_optimized();
 
         if caller != task.created_by && Some(&caller) != task.assignee.as_ref() {
-            panic!("not authorized to dispute task");
+            panic!();
         }
 
         if task.status != TaskStatus::InProgress && task.status != TaskStatus::Completed {
-            panic!("task status cannot be disputed");
+            panic!();
         }
 
         task.status = TaskStatus::Disputed;
@@ -527,30 +524,30 @@ impl TaskManagerContract {
     ) {
         admin.require_auth();
 
-        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap_optimized();
         if admin != stored_admin {
-            panic!("not admin");
+            panic!();
         }
 
         let mut task: Task = env
             .storage()
             .instance()
             .get(&DataKey::Task(task_id))
-            .unwrap_or_else(|| panic!("task not found"));
+            .unwrap_optimized();
 
         if task.status != TaskStatus::Disputed {
-            panic!("task is not disputed");
+            panic!();
         }
 
         if creator_refund + assignee_payout != task.reward {
-            panic!("invalid split totals");
+            panic!();
         }
 
         let token_contract: Address = env
             .storage()
             .instance()
             .get(&DataKey::TokenContract)
-            .unwrap();
+            .unwrap_optimized();
         let token_client = soroban_sdk::token::Client::new(&env, &token_contract);
 
         if creator_refund > 0 {
@@ -564,7 +561,7 @@ impl TaskManagerContract {
             let assignee = task
                 .assignee
                 .clone()
-                .unwrap_or_else(|| panic!("no assignee"));
+                .unwrap_optimized();
             token_client.transfer(&env.current_contract_address(), &assignee, &assignee_payout);
 
             // Award reputation for winning dispute
@@ -574,7 +571,7 @@ impl TaskManagerContract {
                 reputation::points_for_event(reputation::ReputationEventType::DisputeWon),
                 reputation::ReputationEventType::DisputeWon,
                 Some(task_id),
-                String::from_str(&env, "Won dispute"),
+                Symbol::new(&env, "Won dispute"),
             );
         }
 
@@ -588,10 +585,6 @@ impl TaskManagerContract {
         events::emit_dispute_resolved(&env, task_id, creator_refund, assignee_payout);
     }
 
-    /// Resolve a disputed task by splitting the escrowed funds among multiple
-    /// recipients according to percentage shares.
-    ///
-    /// Delegates to the module-level `resolve_dispute_split` function.
     pub fn resolve_dispute_split(
         env: Env,
         task_id: u32,
@@ -610,7 +603,7 @@ impl TaskManagerContract {
         assignee: Address,
         task_id: u32,
         milestone_id: u32,
-        submission_url: String,
+        submission_url: Symbol,
     ) {
         assignee.require_auth();
 
@@ -619,10 +612,10 @@ impl TaskManagerContract {
             .storage()
             .instance()
             .get(&DataKey::Task(task_id))
-            .unwrap_or_else(|| panic!("task not found"));
+            .unwrap_optimized();
 
         if task.assignee.as_ref() != Some(&assignee) {
-            panic!("not the assignee");
+            panic!();
         }
 
         escrow::submit_milestone(env.clone(), task_id, milestone_id, submission_url);
@@ -635,7 +628,7 @@ impl TaskManagerContract {
         caller: Address,
         task_id: u32,
         milestone_id: u32,
-        feedback: Option<String>,
+        feedback: Option<Symbol>,
     ) {
         caller.require_auth();
 
@@ -643,12 +636,12 @@ impl TaskManagerContract {
             .storage()
             .instance()
             .get(&DataKey::Task(task_id))
-            .unwrap_or_else(|| panic!("task not found"));
+            .unwrap_optimized();
 
         // Only creator or admin can approve
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap_optimized();
         if caller != task.created_by && caller != admin {
-            panic!("not authorized");
+            panic!();
         }
 
         let amount =
@@ -659,9 +652,9 @@ impl TaskManagerContract {
             .storage()
             .instance()
             .get(&DataKey::TokenContract)
-            .unwrap();
+            .unwrap_optimized();
         let token_client = soroban_sdk::token::Client::new(&env, &token_contract);
-        let assignee = task.assignee.clone().unwrap();
+        let assignee = task.assignee.clone().unwrap_optimized();
 
         token_client.transfer(&env.current_contract_address(), &assignee, &amount);
 
@@ -674,7 +667,7 @@ impl TaskManagerContract {
             reputation::points_for_event(reputation::ReputationEventType::MilestoneApproved),
             reputation::ReputationEventType::MilestoneApproved,
             Some(task_id),
-            String::from_str(&env, "Milestone approved"),
+            Symbol::new(&env, "Milestone approved"),
         );
     }
 
@@ -683,7 +676,7 @@ impl TaskManagerContract {
         caller: Address,
         task_id: u32,
         milestone_id: u32,
-        feedback: String,
+        feedback: Symbol,
     ) {
         caller.require_auth();
 
@@ -691,12 +684,12 @@ impl TaskManagerContract {
             .storage()
             .instance()
             .get(&DataKey::Task(task_id))
-            .unwrap_or_else(|| panic!("task not found"));
+            .unwrap_optimized();
 
         // Only creator or admin can reject
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap_optimized();
         if caller != task.created_by && caller != admin {
-            panic!("not authorized");
+            panic!();
         }
 
         escrow::reject_milestone(env.clone(), task_id, milestone_id, feedback.clone());
@@ -712,14 +705,14 @@ impl TaskManagerContract {
     // User Profile Management
     // ========================================================================
 
-    pub fn create_profile(env: Env, user: Address, username: String, bio: String) {
+    pub fn create_profile(env: Env, user: Address, username: Symbol, bio: Symbol) {
         user_profile::create_profile(env.clone(), user.clone(), username.clone(), bio.clone());
         events::emit_profile_created(&env, user, username);
     }
 
-    pub fn update_bio(env: Env, user: Address, new_bio: String) {
+    pub fn update_bio(env: Env, user: Address, new_bio: Symbol) {
         user_profile::update_bio(env.clone(), user.clone(), new_bio.clone());
-        events::emit_profile_updated(&env, user, String::from_str(&env, "bio"));
+        events::emit_profile_updated(&env, user, Symbol::new(&env, "bio"));
     }
 
     pub fn reward_contribution(env: Env, admin: Address, user: Address, points: u32) {
@@ -741,7 +734,7 @@ impl TaskManagerContract {
         reputation::get_user_reputation(env, user)
     }
 
-    pub fn get_user_tier(env: Env, user: Address) -> String {
+    pub fn get_user_tier(env: Env, user: Address) -> Symbol {
         reputation::get_user_tier(env, user)
     }
 
@@ -763,7 +756,7 @@ impl TaskManagerContract {
         let role_name = role_data
             .as_ref()
             .map(|r| format_role(&env, &r.role))
-            .unwrap_or_else(|| String::from_str(&env, "none"));
+            .unwrap_or_else(|| Symbol::new(&env, "none"));
 
         access_control::revoke_role(env.clone(), admin.clone(), user.clone());
         events::emit_role_revoked(&env, user, role_name, admin);
@@ -777,7 +770,7 @@ impl TaskManagerContract {
     // Governance
     // ========================================================================
 
-    pub fn create_proposal(env: Env, proposer: Address, title: String, description: String) -> u32 {
+    pub fn create_proposal(env: Env, proposer: Address, title: Symbol, description: Symbol) -> u32 {
         let config = governance::get_config(env.clone());
 
         let proposal_id = governance::create_proposal(
@@ -800,9 +793,9 @@ impl TaskManagerContract {
         governance::cast_vote(env.clone(), voter.clone(), proposal_id, vote_type, weight);
 
         let vote_str = match vote_type {
-            governance::VoteType::For => String::from_str(&env, "for"),
-            governance::VoteType::Against => String::from_str(&env, "against"),
-            governance::VoteType::Abstain => String::from_str(&env, "abstain"),
+            governance::VoteType::For => Symbol::new(&env, "for"),
+            governance::VoteType::Against => Symbol::new(&env, "against"),
+            governance::VoteType::Abstain => Symbol::new(&env, "abstain"),
         };
 
         events::emit_vote_cast(&env, proposal_id, voter, vote_str, weight);
@@ -832,7 +825,6 @@ impl TaskManagerContract {
     // approval-vote entry point keeps the unprefixed `vote_proposal` name,
     // which was free.
 
-    /// Install the multisig signer set and approval threshold. Admin-only.
     pub fn configure_multisig(
         env: Env,
         admin: Address,
@@ -853,11 +845,10 @@ impl TaskManagerContract {
         events::emit_multisig_configured(&env, admin, signer_count, threshold);
     }
 
-    /// Propose an admin parameter change or treasury movement. Signer-only.
     pub fn multisig_propose(
         env: Env,
         proposer: Address,
-        description: String,
+        description: Symbol,
         action: multisig::MultisigAction,
     ) -> u32 {
         let proposal_id =
@@ -869,8 +860,6 @@ impl TaskManagerContract {
         proposal_id
     }
 
-    /// Record an approval vote. Executes the proposal in the same call when
-    /// this vote reaches the threshold and `auto_execute` is enabled.
     pub fn vote_proposal(
         env: Env,
         signer: Address,
@@ -889,7 +878,6 @@ impl TaskManagerContract {
         status
     }
 
-    /// Execute an already-approved proposal. Signer-only.
     pub fn multisig_execute_proposal(
         env: Env,
         caller: Address,
@@ -900,7 +888,6 @@ impl TaskManagerContract {
         status
     }
 
-    /// Cancel a proposal before execution. Proposer or admin only.
     pub fn multisig_cancel_proposal(env: Env, caller: Address, proposal_id: u32) {
         multisig::cancel_proposal(env.clone(), caller.clone(), proposal_id);
         events::emit_multisig_cancelled(&env, proposal_id, caller);
@@ -946,12 +933,12 @@ impl TaskManagerContract {
 
     pub fn pause_all(env: Env, admin: Address) {
         pausable::pause_all(env.clone(), admin.clone());
-        events::emit_paused(&env, String::from_str(&env, "all"), admin);
+        events::emit_paused(&env, Symbol::new(&env, "all"), admin);
     }
 
     pub fn unpause_all(env: Env, admin: Address) {
         pausable::unpause_all(env.clone(), admin.clone());
-        events::emit_unpaused(&env, String::from_str(&env, "all"), admin);
+        events::emit_unpaused(&env, Symbol::new(&env, "all"), admin);
     }
 
     // ========================================================================
@@ -993,10 +980,6 @@ impl TaskManagerContract {
         swap_router::get_config(env)
     }
 
-    /// Convert an incoming non-standard SAC token into an approved vault
-    /// stablecoin via a (possibly multi-hop) DEX route, guarded by an
-    /// oracle-derived minimum-return check. Refunds (rejects without pulling
-    /// funds) if the route can't be resolved or has no oracle price.
     pub fn convert_incoming_deposit(
         env: Env,
         sender: Address,
@@ -1065,7 +1048,6 @@ impl TaskManagerContract {
     // Multi-Stablecoin Vault
     // ========================================================================
 
-    /// Register a SAC token address as an accepted vault currency. Admin only.
     pub fn add_supported_token(env: Env, admin: Address, token: Address) {
         admin.require_auth();
 
@@ -1073,16 +1055,15 @@ impl TaskManagerContract {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic!("not initialized"));
+            .unwrap_optimized();
         if admin != stored_admin {
-            panic!("only admin can add supported tokens");
+            panic!();
         }
 
         vault::add_supported_token(&env, token.clone());
         events::emit_token_supported(&env, token, admin);
     }
 
-    /// Deregister a SAC token address from the accepted vault currencies. Admin only.
     pub fn remove_supported_token(env: Env, admin: Address, token: Address) {
         admin.require_auth();
 
@@ -1090,9 +1071,9 @@ impl TaskManagerContract {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic!("not initialized"));
+            .unwrap_optimized();
         if admin != stored_admin {
-            panic!("only admin can remove supported tokens");
+            panic!();
         }
 
         vault::remove_supported_token(&env, token.clone());
@@ -1107,15 +1088,12 @@ impl TaskManagerContract {
         vault::get_supported_tokens(&env)
     }
 
-    /// Deposit `amount` of `token` into the vault. Token must already be supported.
     pub fn deposit_to_vault(env: Env, depositor: Address, token: Address, amount: i128) {
         depositor.require_auth();
         vault::deposit(&env, depositor.clone(), token.clone(), amount);
         events::emit_vault_deposit(&env, depositor, token, amount);
     }
 
-    /// Claim `amount` of `token` out of the vault, drawing down the caller's
-    /// depositor balance for that specific token.
     pub fn claim_from_vault(env: Env, claimant: Address, token: Address, amount: i128) {
         claimant.require_auth();
         vault::claim(&env, claimant.clone(), token.clone(), amount);
@@ -1146,10 +1124,10 @@ impl TaskManagerContract {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic!("not initialized"));
+            .unwrap_optimized();
 
         if admin != stored_admin {
-            panic!("only admin can set payroll root");
+            panic!();
         }
 
         vault::set_payroll_root(&env, payroll_id, root);
@@ -1171,22 +1149,16 @@ impl TaskManagerContract {
     // Upgrade Timelock & Rollback Guard
     // ========================================================================
 
-    /// Read the currently configured upgrade timelock delay, in seconds.
     pub fn get_upgrade_timelock(env: Env) -> u64 {
         upgrade::get_timelock_seconds(&env)
     }
 
-    /// Reconfigure the upgrade timelock delay. Admin-only; rejects values
-    /// below `upgrade::MIN_TIMELOCK_SECONDS`.
     pub fn set_upgrade_timelock(env: Env, admin: Address, seconds: u64) {
         let old_seconds = upgrade::get_timelock_seconds(&env);
         let new_seconds = upgrade::set_timelock_seconds(env.clone(), admin.clone(), seconds);
         events::emit_upgrade_timelock_updated(&env, old_seconds, new_seconds, admin);
     }
 
-    /// Propose upgrading the contract to `new_wasm_hash`. Admin-only. Starts
-    /// the mandatory timelock window; `execute_upgrade` will reject any
-    /// attempt to apply the upgrade before `ready_at`.
     pub fn propose_upgrade(
         env: Env,
         admin: Address,
@@ -1197,32 +1169,22 @@ impl TaskManagerContract {
         proposal
     }
 
-    /// Veto the currently pending upgrade proposal. Callable by the admin or
-    /// any address holding the `Guardian` role during the timelock window.
     pub fn veto_upgrade(env: Env, guardian: Address) -> upgrade::UpgradeProposal {
         let proposal = upgrade::veto_upgrade(env.clone(), guardian.clone());
         events::emit_upgrade_vetoed(&env, proposal.wasm_hash.clone(), guardian);
         proposal
     }
 
-    /// Execute the pending upgrade proposal once its timelock has elapsed.
-    /// Admin-only. Reverts if called early, or if the proposal was already
-    /// executed or vetoed.
     pub fn execute_upgrade(env: Env, admin: Address) -> soroban_sdk::BytesN<32> {
         let wasm_hash = upgrade::execute_upgrade(env.clone(), admin.clone());
         events::emit_upgrade_executed(&env, wasm_hash.clone(), admin);
         wasm_hash
     }
 
-    /// Current state of the (single) pending/most-recently-resolved upgrade
-    /// proposal, if any has ever been created.
     pub fn get_pending_upgrade(env: Env) -> Option<upgrade::UpgradeProposal> {
         upgrade::get_pending_upgrade(&env)
     }
 
-    /// Append-only log of WASM hashes this contract has actually been
-    /// upgraded to. Used to identify a hash to roll back to via
-    /// `propose_upgrade`.
     pub fn get_upgrade_history(env: Env) -> Vec<upgrade::UpgradeHistoryEntry> {
         upgrade::get_upgrade_history(&env)
     }
@@ -1231,22 +1193,16 @@ impl TaskManagerContract {
     // Reward Treasury: Decay-Curve Vesting & Distribution
     // ========================================================================
 
-    /// Set the SAC token the reward treasury holds and pays out. Admin-only.
     pub fn configure_treasury(env: Env, admin: Address, token: Address) {
         treasury::configure_treasury(env, admin, token);
     }
 
-    /// Deposit `amount` of the treasury token into the reward treasury.
-    /// Returns the new total treasury balance.
     pub fn fund_treasury(env: Env, funder: Address, amount: i128) -> i128 {
         let new_balance = treasury::fund_treasury(env.clone(), funder.clone(), amount);
         events::emit_treasury_funded(&env, funder, amount, new_balance);
         new_balance
     }
 
-    /// Create a decay-curve vesting schedule paying `total_amount` to
-    /// `beneficiary` over time. Admin-only; rejected if it would allocate
-    /// more than the treasury's currently funded, unallocated balance.
     pub fn create_vesting_schedule(
         env: Env,
         admin: Address,
@@ -1277,11 +1233,9 @@ impl TaskManagerContract {
         schedule_id
     }
 
-    /// Claim everything currently vested-but-unclaimed on `schedule_id`.
-    /// Beneficiary-only. Returns the amount transferred.
     pub fn claim_vesting(env: Env, beneficiary: Address, schedule_id: u32) -> i128 {
         let amount = treasury::claim(env.clone(), beneficiary.clone(), schedule_id);
-        let schedule = treasury::get_vesting_schedule(&env, schedule_id).unwrap();
+        let schedule = treasury::get_vesting_schedule(&env, schedule_id).unwrap_optimized();
         events::emit_vesting_claimed(
             &env,
             schedule_id,
@@ -1300,12 +1254,10 @@ impl TaskManagerContract {
         treasury::get_beneficiary_schedules(env, beneficiary)
     }
 
-    /// Amount vested so far on `schedule_id`, ignoring claims already made.
     pub fn get_vested_amount(env: Env, schedule_id: u32) -> i128 {
         treasury::vested_amount(&env, schedule_id)
     }
 
-    /// Amount currently claimable on `schedule_id`: vested minus claimed.
     pub fn get_claimable_amount(env: Env, schedule_id: u32) -> i128 {
         treasury::claimable_amount(&env, schedule_id)
     }
@@ -1323,16 +1275,6 @@ impl TaskManagerContract {
 // Dispute Split Resolution (module-level for multisig reuse)
 // ============================================================================
 
-/// Resolve a disputed task by splitting the escrowed funds among multiple
-/// recipients according to percentage shares.
-///
-/// - `task_id`    – must be in `Disputed` status.
-/// - `recipients` – non-empty list of payment recipients.
-/// - `shares_bps` – basis-point share per recipient (must sum to 10000).
-///
-/// Platform fee is deducted from the total before distribution. Each
-/// recipient's final payout is computed proportionally from the
-/// fee-reduced balance.
 pub fn resolve_dispute_split(
     env: Env,
     task_id: u32,
@@ -1341,21 +1283,21 @@ pub fn resolve_dispute_split(
 ) {
     // ── Basic invariants ────────────────────────────────────────────
     if recipients.len() == 0 {
-        panic!("recipients list cannot be empty");
+        panic!();
     }
     if recipients.len() != shares_bps.len() {
-        panic!("recipients and shares must have same length");
+        panic!();
     }
 
     let mut total_bps: u32 = 0;
     for i in 0..shares_bps.len() {
-        let bps = shares_bps.get(i).unwrap();
+        let bps = shares_bps.get(i).unwrap_optimized();
         total_bps = total_bps
             .checked_add(bps)
-            .unwrap_or_else(|| panic!("share bps overflow"));
+            .unwrap_optimized();
     }
     if total_bps != 10000 {
-        panic!("shares must sum to 10000 (100%)");
+        panic!();
     }
 
     // ── Task state checks ──────────────────────────────────────────
@@ -1363,10 +1305,10 @@ pub fn resolve_dispute_split(
         .storage()
         .instance()
         .get(&DataKey::Task(task_id))
-        .unwrap_or_else(|| panic!("task not found"));
+        .unwrap_optimized();
 
     if task.status != TaskStatus::Disputed {
-        panic!("task is not disputed");
+        panic!();
     }
 
     // ── Fee calculation ────────────────────────────────────────────
@@ -1379,12 +1321,12 @@ pub fn resolve_dispute_split(
         .storage()
         .instance()
         .get(&DataKey::FeeRecipient)
-        .unwrap();
+        .unwrap_optimized();
     let token_contract: Address = env
         .storage()
         .instance()
         .get(&DataKey::TokenContract)
-        .unwrap();
+        .unwrap_optimized();
     let token_client = soroban_sdk::token::Client::new(&env, &token_contract);
 
     let fee = (task.reward * platform_fee_bps as i128) / 10000;
@@ -1392,8 +1334,8 @@ pub fn resolve_dispute_split(
 
     // ── Distribute ─────────────────────────────────────────────────
     for i in 0..recipients.len() {
-        let recipient = recipients.get(i).unwrap();
-        let bps = shares_bps.get(i).unwrap();
+        let recipient = recipients.get(i).unwrap_optimized();
+        let bps = shares_bps.get(i).unwrap_optimized();
         let payout = (distributable * bps as i128) / 10000;
         if payout > 0 {
             token_client.transfer(
@@ -1429,25 +1371,25 @@ pub fn resolve_dispute_split(
 // Helper Functions
 // ============================================================================
 
-fn format_role(env: &Env, role: &access_control::Role) -> String {
+fn format_role(env: &Env, role: &access_control::Role) -> Symbol {
     match role {
-        access_control::Role::Admin => String::from_str(env, "Admin"),
-        access_control::Role::Manager => String::from_str(env, "Manager"),
-        access_control::Role::Moderator => String::from_str(env, "Moderator"),
-        access_control::Role::Verifier => String::from_str(env, "Verifier"),
-        access_control::Role::Guardian => String::from_str(env, "Guardian"),
+        access_control::Role::Admin => Symbol::new(&env, "Admin"),
+        access_control::Role::Manager => Symbol::new(&env, "Manager"),
+        access_control::Role::Moderator => Symbol::new(&env, "Moderator"),
+        access_control::Role::Verifier => Symbol::new(&env, "Verifier"),
+        access_control::Role::Guardian => Symbol::new(&env, "Guardian"),
     }
 }
 
-fn format_pause_action(env: &Env, action: pausable::PauseAction) -> String {
+fn format_pause_action(env: &Env, action: pausable::PauseAction) -> Symbol {
     match action {
-        pausable::PauseAction::CreateTask => String::from_str(env, "create_task"),
-        pausable::PauseAction::AssignTask => String::from_str(env, "assign_task"),
-        pausable::PauseAction::SubmitWork => String::from_str(env, "submit_work"),
-        pausable::PauseAction::CompleteTask => String::from_str(env, "complete_task"),
-        pausable::PauseAction::CancelTask => String::from_str(env, "cancel_task"),
-        pausable::PauseAction::DisputeTask => String::from_str(env, "dispute_task"),
-        pausable::PauseAction::Withdraw => String::from_str(env, "withdraw"),
-        pausable::PauseAction::All => String::from_str(env, "all"),
+        pausable::PauseAction::CreateTask => Symbol::new(&env, "create_task"),
+        pausable::PauseAction::AssignTask => Symbol::new(&env, "assign_task"),
+        pausable::PauseAction::SubmitWork => Symbol::new(&env, "submit_work"),
+        pausable::PauseAction::CompleteTask => Symbol::new(&env, "complete_task"),
+        pausable::PauseAction::CancelTask => Symbol::new(&env, "cancel_task"),
+        pausable::PauseAction::DisputeTask => Symbol::new(&env, "dispute_task"),
+        pausable::PauseAction::Withdraw => Symbol::new(&env, "withdraw"),
+        pausable::PauseAction::All => Symbol::new(&env, "all"),
     }
 }

@@ -1,12 +1,13 @@
 #![cfg(test)]
 #![allow(deprecated)]
 
+use soroban_sdk::unwrap::UnwrapOptimized;
 use crate::{TaskManagerContract, TaskManagerContractClient};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::testutils::Ledger as _;
 use soroban_sdk::token::StellarAssetClient;
 use soroban_sdk::xdr::ToXdr;
-use soroban_sdk::{Address, BytesN, Env, String, Vec};
+use soroban_sdk::{Address, BytesN, Env, Symbol, Vec};
 
 // ── Shared setup helper ────────────────────────────────────────────────────
 
@@ -64,12 +65,12 @@ fn test_create_and_complete_task_flow() {
     assert_eq!(token.balance(&creator), 1000);
 
     let mut tags = Vec::new(&env);
-    tags.push_back(String::from_str(&env, "rust"));
+    tags.push_back(Symbol::new(&env, "rust"));
 
     let task_id = client.create_task(
         &creator,
-        &String::from_str(&env, "Test Task"),
-        &String::from_str(&env, "Task Description"),
+        &Symbol::new(&env, "Test Task"),
+        &Symbol::new(&env, "Task Description"),
         &1000,
         &tags,
     );
@@ -81,7 +82,7 @@ fn test_create_and_complete_task_flow() {
     client.submit_work(
         &assignee,
         &task_id,
-        &String::from_str(
+        &Symbol::new(
             &env,
             "https://github.com/LatterFixxx/LatterFix-Smart-contract",
         ),
@@ -108,8 +109,8 @@ fn test_cancel_task_refund() {
 
     let task_id = client.create_task(
         &creator,
-        &String::from_str(&env, "Cancel Task"),
-        &String::from_str(&env, "Will cancel this"),
+        &Symbol::new(&env, "Cancel Task"),
+        &Symbol::new(&env, "Will cancel this"),
         &500,
         &Vec::new(&env),
     );
@@ -142,8 +143,8 @@ fn test_dispute_and_resolution() {
 
     let task_id = client.create_task(
         &creator,
-        &String::from_str(&env, "Dispute Task"),
-        &String::from_str(&env, "Dispute test"),
+        &Symbol::new(&env, "Dispute Task"),
+        &Symbol::new(&env, "Dispute test"),
         &1000,
         &Vec::new(&env),
     );
@@ -167,8 +168,8 @@ fn test_user_profile_lifecycle() {
     let (client, _, admin, _, _) = setup_initialized_contract(&env, 100);
 
     let user = Address::generate(&env);
-    let username = String::from_str(&env, "john_doe");
-    let bio = String::from_str(&env, "Rust developer");
+    let username = Symbol::new(&env, "john_doe");
+    let bio = Symbol::new(&env, "Rust developer");
 
     client.create_profile(&user, &username, &bio);
 
@@ -181,12 +182,12 @@ fn test_user_profile_lifecycle() {
     assert_eq!(profile.completed_tasks, 0);
     assert_eq!(profile.bio, bio);
 
-    let new_bio = String::from_str(&env, "Soroban developer");
+    let new_bio = Symbol::new(&env, "Soroban developer");
     client.update_bio(&user, &new_bio);
-    assert_eq!(client.get_profile(&user).unwrap().bio, new_bio);
+    assert_eq!(client.get_profile(&user).unwrap_optimized().bio, new_bio);
 
     client.reward_contribution(&admin, &user, &25);
-    let updated = client.get_profile(&user).unwrap();
+    let updated = client.get_profile(&user).unwrap_optimized();
     assert_eq!(updated.reputation, 125, "reputation must increase by 25");
     assert_eq!(updated.completed_tasks, 1);
 }
@@ -206,8 +207,8 @@ fn test_dispute_full_assignee_payout() {
 
     let task_id = client.create_task(
         &creator,
-        &String::from_str(&env, "Full Assignee Payout"),
-        &String::from_str(&env, "Admin rules in contributor favour"),
+        &Symbol::new(&env, "Full Assignee Payout"),
+        &Symbol::new(&env, "Admin rules in contributor favour"),
         &800,
         &Vec::new(&env),
     );
@@ -239,19 +240,19 @@ fn test_multiple_concurrent_tasks() {
     StellarAssetClient::new(&env, &token_contract).mint(&creator, &3000);
 
     let mut tags = Vec::new(&env);
-    tags.push_back(String::from_str(&env, "frontend"));
+    tags.push_back(Symbol::new(&env, "frontend"));
 
     let t1 = client.create_task(
         &creator,
-        &String::from_str(&env, "Task Alpha"),
-        &String::from_str(&env, "First concurrent task"),
+        &Symbol::new(&env, "Task Alpha"),
+        &Symbol::new(&env, "First concurrent task"),
         &1000,
         &tags,
     );
     let t2 = client.create_task(
         &creator,
-        &String::from_str(&env, "Task Beta"),
-        &String::from_str(&env, "Second concurrent task"),
+        &Symbol::new(&env, "Task Beta"),
+        &Symbol::new(&env, "Second concurrent task"),
         &2000,
         &tags,
     );
@@ -266,12 +267,12 @@ fn test_multiple_concurrent_tasks() {
 
     // Complete task 1 → a1
     client.assign_task(&a1, &t1);
-    client.submit_work(&a1, &t1, &String::from_str(&env, "https://github.com/pr/1"));
+    client.submit_work(&a1, &t1, &Symbol::new(&env, "https://github.com/pr/1"));
     client.complete_task(&creator, &t1);
 
     // Complete task 2 → a2
     client.assign_task(&a2, &t2);
-    client.submit_work(&a2, &t2, &String::from_str(&env, "https://github.com/pr/2"));
+    client.submit_work(&a2, &t2, &Symbol::new(&env, "https://github.com/pr/2"));
     client.complete_task(&creator, &t2);
 
     // 1% of 1000 = 10, 1% of 2000 = 20 → fee_recipient gets 30
@@ -298,8 +299,8 @@ fn test_cannot_double_assign() {
 
     let task_id = client.create_task(
         &creator,
-        &String::from_str(&env, "Single Assign Task"),
-        &String::from_str(&env, "Only one assignee allowed"),
+        &Symbol::new(&env, "Single Assign Task"),
+        &Symbol::new(&env, "Only one assignee allowed"),
         &500,
         &Vec::new(&env),
     );
@@ -327,8 +328,8 @@ fn test_twap_config_initialization() {
     let contract_id = env.register_contract(None, TaskManagerContract);
     let e = env.clone();
     env.as_contract(&contract_id, move || {
-        let primary_pool = String::from_str(&e, "primary-pool");
-        let secondary_oracle = Some(String::from_str(&e, "fallback-oracle"));
+        let primary_pool = Symbol::new(&e, "primary-pool");
+        let secondary_oracle = Some(Symbol::new(&e, "fallback-oracle"));
         
         initialize_twap_config(
             e.clone(),
@@ -389,11 +390,11 @@ fn test_record_price_observations() {
 
     let e = env.clone();
     env.as_contract(&contract_id, move || {
-        let asset_pair = String::from_str(&e, "USDC/EUR");
+        let asset_pair = Symbol::new(&e, "USDC/EUR");
 
         initialize_twap_config(
             e.clone(),
-            String::from_str(&e, "pool1"),
+            Symbol::new(&e, "pool1"),
             None,
             3,
             500,
@@ -421,7 +422,7 @@ fn test_record_price_observations() {
 
         let last_obs = get_last_twap(e.clone(), asset_pair.clone());
         assert!(last_obs.is_some());
-        let last = last_obs.unwrap();
+        let last = last_obs.unwrap_optimized();
         assert_eq!(last.timestamp, 2_000);
         assert_eq!(last.price, 1_100_000_000);
     });
@@ -449,11 +450,11 @@ fn test_multi_period_twap_accumulation() {
     env.as_contract(&contract_id, move || {
         e.ledger().set_timestamp(1_005_000);
 
-        let asset_pair = String::from_str(&e, "USDC/EUR");
+        let asset_pair = Symbol::new(&e, "USDC/EUR");
 
         initialize_twap_config(
             e.clone(),
-            String::from_str(&e, "pool1"),
+            Symbol::new(&e, "pool1"),
             None,
             2,
             500,
@@ -526,11 +527,11 @@ fn test_outlier_price_filter() {
     env.as_contract(&contract_id, move || {
         e.ledger().set_timestamp(1_005_000);
 
-        let asset_pair = String::from_str(&e, "USDC/USD");
+        let asset_pair = Symbol::new(&e, "USDC/USD");
 
         initialize_twap_config(
             e.clone(),
-            String::from_str(&e, "pool1"),
+            Symbol::new(&e, "pool1"),
             None,
             3,
             500,
@@ -612,13 +613,13 @@ fn test_fallback_oracle_low_liquidity() {
     env.as_contract(&contract_id, move || {
         e.ledger().set_timestamp(1_005_000);
 
-        let asset_pair = String::from_str(&e, "USDC/JPY");
+        let asset_pair = Symbol::new(&e, "USDC/JPY");
 
-        let fallback_oracle = String::from_str(&e, "fallback");
+        let fallback_oracle = Symbol::new(&e, "fallback");
 
         initialize_twap_config(
             e.clone(),
-            String::from_str(&e, "pool1"),
+            Symbol::new(&e, "pool1"),
             Some(fallback_oracle),
             2,
             500,
@@ -683,13 +684,13 @@ fn test_fallback_on_insufficient_observations() {
     env.as_contract(&contract_id, move || {
         e.ledger().set_timestamp(1_005_000);
 
-        let asset_pair = String::from_str(&e, "USDC/GBP");
+        let asset_pair = Symbol::new(&e, "USDC/GBP");
 
-        let fallback_oracle = String::from_str(&e, "fallback");
+        let fallback_oracle = Symbol::new(&e, "fallback");
 
         initialize_twap_config(
             e.clone(),
-            String::from_str(&e, "pool1"),
+            Symbol::new(&e, "pool1"),
             Some(fallback_oracle),
             3,
             500,
@@ -732,11 +733,11 @@ fn test_pool_liquidity_checks() {
     let contract_id = env.register_contract(None, TaskManagerContract);
     let e = env.clone();
     env.as_contract(&contract_id, move || {
-        let asset_pair = String::from_str(&e, "USDC/CHF");
+        let asset_pair = Symbol::new(&e, "USDC/CHF");
         
         initialize_twap_config(
             e.clone(),
-            String::from_str(&e, "pool1"),
+            Symbol::new(&e, "pool1"),
             None,
             2,
             500,
@@ -772,11 +773,11 @@ fn test_prune_old_observations() {
     env.as_contract(&contract_id, move || {
         e.ledger().set_timestamp(100_000);
 
-        let asset_pair = String::from_str(&e, "USDC/CAD");
+        let asset_pair = Symbol::new(&e, "USDC/CAD");
 
         initialize_twap_config(
             e.clone(),
-            String::from_str(&e, "pool1"),
+            Symbol::new(&e, "pool1"),
             None,
             2,
             500,
@@ -829,11 +830,11 @@ fn test_twap_observation_window_filtering() {
     env.as_contract(&contract_id, move || {
         e.ledger().set_timestamp(100_000);
 
-        let asset_pair = String::from_str(&e, "USDC/AUD");
+        let asset_pair = Symbol::new(&e, "USDC/AUD");
 
         initialize_twap_config(
             e.clone(),
-            String::from_str(&e, "pool1"),
+            Symbol::new(&e, "pool1"),
             None,
             2,
             500,
@@ -889,11 +890,11 @@ fn test_twap_edge_case_prices() {
     env.as_contract(&contract_id, move || {
         e.ledger().set_timestamp(1_005_000);
 
-        let asset_pair = String::from_str(&e, "USDC/NZD");
+        let asset_pair = Symbol::new(&e, "USDC/NZD");
 
         initialize_twap_config(
             e.clone(),
-            String::from_str(&e, "pool1"),
+            Symbol::new(&e, "pool1"),
             None,
             2,
             1000,
@@ -938,7 +939,6 @@ use soroban_sdk::Bytes;
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
-/// A well-formed Groth16 proof payload (non-zero points of the expected size).
 fn zk_proof(env: &Env) -> Groth16Proof {
     Groth16Proof {
         a: Bytes::from_array(env, &[1u8; 96]),
@@ -947,7 +947,6 @@ fn zk_proof(env: &Env) -> Groth16Proof {
     }
 }
 
-/// `n + 1` IC points, as Groth16 requires for `n` public signals.
 fn zk_ic(env: &Env, n: u32) -> Vec<Bytes> {
     let mut ic = Vec::new(env);
     for i in 0..(n + 1) {
@@ -956,7 +955,6 @@ fn zk_ic(env: &Env, n: u32) -> Vec<Bytes> {
     ic
 }
 
-/// `n` public signals.
 fn zk_signals(env: &Env, n: u32) -> Vec<BytesN<32>> {
     let mut signals = Vec::new(env);
     for i in 0..n {
@@ -965,16 +963,15 @@ fn zk_signals(env: &Env, n: u32) -> Vec<BytesN<32>> {
     signals
 }
 
-/// Initialize the module and register a VK for a 2-signal circuit.
-fn zk_setup(env: &Env) -> (Address, String) {
+fn zk_setup(env: &Env) -> (Address, Symbol) {
     let admin = Address::generate(env);
     initialize(env.clone(), admin.clone());
-    let circuit_id = String::from_str(env, "kyc-tier-1");
+    let circuit_id = Symbol::new(&env, "kyc-tier-1");
     register_verification_key(
         env.clone(),
         admin.clone(),
         circuit_id.clone(),
-        String::from_str(env, "BLS12-381"),
+        Symbol::new(&env, "BLS12-381"),
         Bytes::from_array(env, &[9u8; 32]),
         Bytes::from_array(env, &[8u8; 192]),
         Bytes::from_array(env, &[7u8; 192]),
@@ -983,10 +980,9 @@ fn zk_setup(env: &Env) -> (Address, String) {
     (admin, circuit_id)
 }
 
-/// Build a valid attestation (2 signals) with a correctly bound commitment.
 fn zk_attestation(
     env: &Env,
-    circuit_id: &String,
+    circuit_id: &Symbol,
     subject: &Address,
     nullifier: BytesN<32>,
 ) -> IdentityAttestation {
@@ -1019,7 +1015,7 @@ fn test_zkp_valid_attestation() {
         assert!(!is_nullifier_used(env.clone(), nullifier.clone()));
 
         let attestation = zk_attestation(&env, &circuit_id, &subject, nullifier.clone());
-        let receipt = verify_attestation(env.clone(), attestation).unwrap();
+        let receipt = verify_attestation(env.clone(), attestation).unwrap_optimized();
 
         assert_eq!(receipt.subject, subject);
         assert_eq!(receipt.circuit_id, circuit_id);
@@ -1071,7 +1067,7 @@ fn test_zkp_rejects_unregistered_circuit() {
         let subject = Address::generate(&env);
         let nullifier = BytesN::from_array(&env, &[1u8; 32]);
 
-        let unknown = String::from_str(&env, "unknown-circuit");
+        let unknown = Symbol::new(&env, "unknown-circuit");
         let attestation = zk_attestation(&env, &unknown, &subject, nullifier);
         assert_eq!(
             verify_attestation(env.clone(), attestation),
@@ -1208,8 +1204,8 @@ fn test_zkp_register_vk_requires_admin() {
         register_verification_key(
             env.clone(),
             impostor,
-            String::from_str(&env, "kyc-tier-2"),
-            String::from_str(&env, "BLS12-381"),
+            Symbol::new(&env, "kyc-tier-2"),
+            Symbol::new(&env, "BLS12-381"),
             Bytes::from_array(&env, &[9u8; 32]),
             Bytes::from_array(&env, &[8u8; 192]),
             Bytes::from_array(&env, &[7u8; 192]),
@@ -1251,8 +1247,8 @@ fn test_dispute_split_three_way() {
 
     let task_id = client.create_task(
         &creator,
-        &String::from_str(&env, "Split Task"),
-        &String::from_str(&env, "3-way split"),
+        &Symbol::new(&env, "Split Task"),
+        &Symbol::new(&env, "3-way split"),
         &1000,
         &Vec::new(&env),
     );
@@ -1303,8 +1299,8 @@ fn test_dispute_split_zero_fee() {
 
     let task_id = client.create_task(
         &creator,
-        &String::from_str(&env, "Zero Fee Split"),
-        &String::from_str(&env, "Split with no fee"),
+        &Symbol::new(&env, "Zero Fee Split"),
+        &Symbol::new(&env, "Split with no fee"),
         &800,
         &Vec::new(&env),
     );
@@ -1347,8 +1343,8 @@ fn test_dispute_split_rejects_non_disputed() {
 
     let task_id = client.create_task(
         &creator,
-        &String::from_str(&env, "Normal Task"),
-        &String::from_str(&env, "Not disputed"),
+        &Symbol::new(&env, "Normal Task"),
+        &Symbol::new(&env, "Not disputed"),
         &100,
         &Vec::new(&env),
     );
@@ -1382,8 +1378,8 @@ fn test_dispute_split_rejects_invalid_shares() {
 
     let task_id = client.create_task(
         &creator,
-        &String::from_str(&env, "Bad Shares"),
-        &String::from_str(&env, "shares don't add up"),
+        &Symbol::new(&env, "Bad Shares"),
+        &Symbol::new(&env, "shares don't add up"),
         &500,
         &Vec::new(&env),
     );
@@ -1419,8 +1415,8 @@ fn test_dispute_split_rejects_mismatched_lengths() {
 
     let task_id = client.create_task(
         &creator,
-        &String::from_str(&env, "Mismatch"),
-        &String::from_str(&env, "lengths differ"),
+        &Symbol::new(&env, "Mismatch"),
+        &Symbol::new(&env, "lengths differ"),
         &500,
         &Vec::new(&env),
     );
@@ -1475,8 +1471,8 @@ fn test_dispute_split_via_multisig_proposal() {
 
     let task_id = client.create_task(
         &creator,
-        &String::from_str(&env, "MS Split Task"),
-        &String::from_str(&env, "multisig split"),
+        &Symbol::new(&env, "MS Split Task"),
+        &Symbol::new(&env, "multisig split"),
         &1000,
         &Vec::new(&env),
     );
@@ -1492,7 +1488,7 @@ fn test_dispute_split_via_multisig_proposal() {
     shares.push_back(6000u32);
     shares.push_back(4000u32);
 
-    let desc = String::from_str(&env, "resolve 60/40");
+    let desc = Symbol::new(&env, "resolve 60/40");
     let action = MultisigAction::ResolveDisputeSplit(task_id, recipients, shares);
     let proposal_id = client.multisig_propose(&s0, &desc, &action);
     assert_eq!(proposal_id, 1);

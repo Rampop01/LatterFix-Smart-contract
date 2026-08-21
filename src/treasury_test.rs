@@ -1,6 +1,7 @@
 #![cfg(test)]
 #![allow(deprecated)]
 
+use soroban_sdk::unwrap::UnwrapOptimized;
 use crate::treasury::{decay_retained_bps, MAX_DECAY_PERIODS};
 use crate::{TaskManagerContract, TaskManagerContractClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
@@ -287,7 +288,7 @@ fn test_claim_pays_out_vested_amount_and_updates_balances() {
     assert_eq!(ctx.client.get_treasury_balance(), 500);
     assert_eq!(ctx.client.get_claimable_amount(&schedule_id), 0);
 
-    let schedule = ctx.client.get_vesting_schedule(&schedule_id).unwrap();
+    let schedule = ctx.client.get_vesting_schedule(&schedule_id).unwrap_optimized();
     assert_eq!(schedule.claimed_amount, 500);
 }
 
@@ -396,7 +397,7 @@ fn test_claim_never_exceeds_total_allocation_even_far_past_full_vesting() {
     let claimed = ctx.client.claim_vesting(&beneficiary, &schedule_id);
     assert_eq!(claimed, 1000);
 
-    let schedule = ctx.client.get_vesting_schedule(&schedule_id).unwrap();
+    let schedule = ctx.client.get_vesting_schedule(&schedule_id).unwrap_optimized();
     assert_eq!(schedule.claimed_amount, 1000);
 
     // A further claim attempt has nothing left to release.

@@ -1,17 +1,7 @@
-use soroban_sdk::{symbol_short, Address, Env, String};
+use soroban_sdk::{symbol_short, Address, Env, Symbol};
 
-/// Event module for the LatterFix TaskManager Soroban contract.
-///
-/// Every public state-changing action emits a structured event via
-/// `env.events().publish()`. Events are indexed off-chain by:
-///   - Stellar Expert contract event viewer
-///   - Soroban RPC `getEvents` (filtered by contractId + topic)
-///   - The LatterFix frontend via `fetchContractEvents()` in transactionHistory.ts
-///
-/// Topic layout:  (symbol, primary_id)
-/// Data  layout:  tuple of relevant fields
 // ── Task Events ────────────────────────────────────────────────────────────
-pub fn emit_task_created(env: &Env, task_id: u32, creator: Address, title: String, reward: i128) {
+pub fn emit_task_created(env: &Env, task_id: u32, creator: Address, title: Symbol, reward: i128) {
     let ledger_ts = env.ledger().timestamp();
     env.events().publish(
         (symbol_short!("task_cre"), task_id),
@@ -26,7 +16,7 @@ pub fn emit_task_assigned(env: &Env, task_id: u32, assignee: Address) {
     );
 }
 
-pub fn emit_task_submitted(env: &Env, task_id: u32, assignee: Address, delivery_url: String) {
+pub fn emit_task_submitted(env: &Env, task_id: u32, assignee: Address, delivery_url: Symbol) {
     env.events().publish(
         (symbol_short!("task_subm"), task_id),
         (assignee, delivery_url, env.ledger().timestamp()),
@@ -70,14 +60,14 @@ pub fn emit_dispute_split_resolved(env: &Env, task_id: u32, platform_fee: i128, 
 
 // ── Profile Events ─────────────────────────────────────────────────────────
 
-pub fn emit_profile_created(env: &Env, user: Address, username: String) {
+pub fn emit_profile_created(env: &Env, user: Address, username: Symbol) {
     env.events().publish(
         (symbol_short!("prof_cre"), user),
         (username, env.ledger().timestamp()),
     );
 }
 
-pub fn emit_profile_updated(env: &Env, user: Address, field: String) {
+pub fn emit_profile_updated(env: &Env, user: Address, field: Symbol) {
     env.events().publish(
         (symbol_short!("prof_upd"), user),
         (field, env.ledger().timestamp()),
@@ -114,7 +104,7 @@ pub fn emit_milestone_approved(env: &Env, task_id: u32, milestone_id: u32, amoun
     );
 }
 
-pub fn emit_milestone_rejected(env: &Env, task_id: u32, milestone_id: u32, feedback: String) {
+pub fn emit_milestone_rejected(env: &Env, task_id: u32, milestone_id: u32, feedback: Symbol) {
     env.events().publish(
         (symbol_short!("mile_rej"), (task_id, milestone_id)),
         (feedback, env.ledger().timestamp()),
@@ -123,14 +113,14 @@ pub fn emit_milestone_rejected(env: &Env, task_id: u32, milestone_id: u32, feedb
 
 // ── Governance Events ──────────────────────────────────────────────────────
 
-pub fn emit_proposal_created(env: &Env, proposal_id: u32, proposer: Address, title: String) {
+pub fn emit_proposal_created(env: &Env, proposal_id: u32, proposer: Address, title: Symbol) {
     env.events().publish(
         (symbol_short!("prop_cre"), proposal_id),
         (proposer, title, env.ledger().timestamp()),
     );
 }
 
-pub fn emit_vote_cast(env: &Env, proposal_id: u32, voter: Address, vote_type: String, weight: u32) {
+pub fn emit_vote_cast(env: &Env, proposal_id: u32, voter: Address, vote_type: Symbol, weight: u32) {
     env.events().publish(
         (symbol_short!("vote_cast"), (proposal_id, voter)),
         (vote_type, weight, env.ledger().timestamp()),
@@ -161,7 +151,7 @@ pub fn emit_multisig_proposed(
     env: &Env,
     proposal_id: u32,
     proposer: Address,
-    description: String,
+    description: Symbol,
     threshold: u32,
 ) {
     env.events().publish(
@@ -199,14 +189,14 @@ pub fn emit_multisig_cancelled(env: &Env, proposal_id: u32, caller: Address) {
 
 // ── Access Control Events ──────────────────────────────────────────────────
 
-pub fn emit_role_granted(env: &Env, user: Address, role: String, granted_by: Address) {
+pub fn emit_role_granted(env: &Env, user: Address, role: Symbol, granted_by: Address) {
     env.events().publish(
         (symbol_short!("role_gr"), user),
         (role, granted_by, env.ledger().timestamp()),
     );
 }
 
-pub fn emit_role_revoked(env: &Env, user: Address, role: String, revoked_by: Address) {
+pub fn emit_role_revoked(env: &Env, user: Address, role: Symbol, revoked_by: Address) {
     env.events().publish(
         (symbol_short!("role_rev"), user),
         (role, revoked_by, env.ledger().timestamp()),
@@ -215,14 +205,14 @@ pub fn emit_role_revoked(env: &Env, user: Address, role: String, revoked_by: Add
 
 // ── Pause Events ───────────────────────────────────────────────────────────
 
-pub fn emit_paused(env: &Env, action: String, admin: Address) {
+pub fn emit_paused(env: &Env, action: Symbol, admin: Address) {
     env.events().publish(
         (symbol_short!("paused"), action),
         (admin, env.ledger().timestamp()),
     );
 }
 
-pub fn emit_unpaused(env: &Env, action: String, admin: Address) {
+pub fn emit_unpaused(env: &Env, action: Symbol, admin: Address) {
     env.events().publish(
         (symbol_short!("unpaused"), action),
         (admin, env.ledger().timestamp()),
@@ -247,7 +237,6 @@ pub fn emit_tokens_released(env: &Env, task_id: u32, to: Address, amount: i128) 
 
 // ── Platform Events ────────────────────────────────────────────────────────
 
-/// Emitted when platform fee basis points are updated by an admin.
 pub fn emit_fee_updated(env: &Env, old_fee_bps: u32, new_fee_bps: u32, updated_by: Address) {
     env.events().publish(
         (symbol_short!("fee_upd"), updated_by),
@@ -255,7 +244,6 @@ pub fn emit_fee_updated(env: &Env, old_fee_bps: u32, new_fee_bps: u32, updated_b
     );
 }
 
-/// Emitted when the contract is first initialized.
 pub fn emit_contract_initialized(env: &Env, admin: Address, fee_bps: u32) {
     env.events().publish(
         (symbol_short!("init"), admin),
@@ -265,7 +253,6 @@ pub fn emit_contract_initialized(env: &Env, admin: Address, fee_bps: u32) {
 
 // ── Swap Router Events ─────────────────────────────────────────────────────
 
-/// Emitted when the multi-asset swap router config is set/updated.
 pub fn emit_router_configured(
     env: &Env,
     admin: Address,
@@ -298,8 +285,6 @@ pub fn emit_stablecoin_removed(env: &Env, admin: Address, stablecoin: Address) {
     );
 }
 
-/// Emitted when an incoming non-standard token is successfully routed and
-/// converted into an approved vault stablecoin.
 pub fn emit_swap_executed(
     env: &Env,
     sender: Address,
@@ -320,14 +305,12 @@ pub fn emit_swap_executed(
     );
 }
 
-/// Emitted when a conversion is rejected before any funds are pulled from the
-/// sender, e.g. because the route couldn't be resolved or has no oracle price.
 pub fn emit_swap_refunded(
     env: &Env,
     sender: Address,
     token_in: Address,
     amount: i128,
-    reason: String,
+    reason: Symbol,
 ) {
     env.events().publish(
         (symbol_short!("swap_ref"), sender),
