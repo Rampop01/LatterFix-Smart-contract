@@ -38,10 +38,10 @@ os.makedirs(ISSUES_DIR, exist_ok=True)
 
 THIRTY_ISSUES = [
     {
-        "id": "056",
+        "id": "065",
         "title": "Reputation-Weighted Slashing Mechanism on Governance Proposal Veto",
         "labels": ["smart-contract", "governance", "hard"],
-        "body": """# #056: Reputation-Weighted Slashing Mechanism on Governance Proposal Veto
+        "body": """# #065: Reputation-Weighted Slashing Mechanism on Governance Proposal Veto
 
 ## Overview
 Implement a reputation-weighted slashing mechanism where users who vote in favor of malicious or spam proposals face automatic reputation point deduction if the proposal is vetoed by the admin/emergency council.
@@ -59,10 +59,10 @@ Implement a reputation-weighted slashing mechanism where users who vote in favor
 """
     },
     {
-        "id": "057",
+        "id": "066",
         "title": "ZK-Snark Based Proof of Delivery Verification",
         "labels": ["smart-contract", "cryptography", "hard"],
-        "body": """# #057: ZK-Snark Based Proof of Delivery Verification
+        "body": """# #066: ZK-Snark Based Proof of Delivery Verification
 
 ## Overview
 Implement a zero-knowledge proof verification pipeline to validate task completion/deliverables without exposing the sensitive delivery URLs on-chain.
@@ -79,10 +79,10 @@ Implement a zero-knowledge proof verification pipeline to validate task completi
 """
     },
     {
-        "id": "058",
+        "id": "067",
         "title": "Multi-Token Quadratic Voting System",
         "labels": ["smart-contract", "governance", "hard"],
-        "body": """# #058: Multi-Token Quadratic Voting System
+        "body": """# #067: Multi-Token Quadratic Voting System
 
 ## Overview
 Implement a quadratic voting system for governance proposals where the voting power is calculated quadratically based on locked reputation and multiple stablecoin balances.
@@ -99,10 +99,10 @@ Implement a quadratic voting system for governance proposals where the voting po
 """
     },
     {
-        "id": "059",
+        "id": "068",
         "title": "Decentralized Dispute Resolution Arbitration Council Selection",
         "labels": ["smart-contract", "reputation", "hard"],
-        "body": """# #059: Decentralized Dispute Resolution Arbitration Council Selection
+        "body": """# #068: Decentralized Dispute Resolution Arbitration Council Selection
 
 ## Overview
 Create a dynamic arbitrator selection protocol that selects a randomized panel of moderators from Expert/Legend tier users who stake reputation points.
@@ -119,10 +119,10 @@ Create a dynamic arbitrator selection protocol that selects a randomized panel o
 """
     },
     {
-        "id": "060",
+        "id": "069",
         "title": "Automated Escrow Staking Yield Distribution",
         "labels": ["smart-contract", "defi", "hard"],
-        "body": """# #060: Automated Escrow Staking Yield Distribution
+        "body": """# #069: Automated Escrow Staking Yield Distribution
 
 ## Overview
 Route locked escrow funds to Soroban liquidity pools/AMMs automatically to earn yield, distributing interest between the treasury and the assignee upon task completion.
@@ -139,10 +139,10 @@ Route locked escrow funds to Soroban liquidity pools/AMMs automatically to earn 
 """
     },
     {
-        "id": "061",
+        "id": "070",
         "title": "Dual-State Ledger Storage Optimization",
         "labels": ["smart-contract", "performance", "hard"],
-        "body": """# #061: Dual-State Ledger Storage Optimization
+        "body": """# #070: Dual-State Ledger Storage Optimization
 
 ## Overview
 Refactor the storage architecture to implement a dual-state system that uses temporary storage for high-churn task parameters and persistent storage for user profiles to minimize state rent fees.
@@ -159,10 +159,10 @@ Refactor the storage architecture to implement a dual-state system that uses tem
 """
     },
     {
-        "id": "062",
+        "id": "071",
         "title": "Formal Verification of State Transitions under Concurrency (Kani)",
         "labels": ["testing", "fuzzing", "hard"],
-        "body": """# #062: Formal Verification of State Transitions under Concurrency (Kani)
+        "body": """# #071: Formal Verification of State Transitions under Concurrency (Kani)
 
 ## Overview
 Add formal verification proofs verifying that concurrent invocations of claim, submission, and cancellation handlers cannot cause double-spending or unauthorized escrow releases.
@@ -179,10 +179,10 @@ Add formal verification proofs verifying that concurrent invocations of claim, s
 """
     },
     {
-        "id": "063",
+        "id": "072",
         "title": "Non-interactive Zero-Knowledge Proofs for Verifiable Credentials",
         "labels": ["smart-contract", "cryptography", "hard"],
-        "body": """# #063: Non-interactive Zero-Knowledge Proofs for Verifiable Credentials
+        "body": """# #072: Non-interactive Zero-Knowledge Proofs for Verifiable Credentials
 
 ## Overview
 Let users verify corporate membership or eligibility credentials when creating profiles using non-interactive zero-knowledge proofs.
@@ -199,10 +199,10 @@ Let users verify corporate membership or eligibility credentials when creating p
 """
     },
     {
-        "id": "064",
+        "id": "073",
         "title": "Cross-Contract Call Reentrancy Lock using Host Invocation Key",
         "labels": ["smart-contract", "security", "hard"],
-        "body": """# #064: Cross-Contract Call Reentrancy Lock using Host Invocation Key
+        "body": """# #073: Cross-Contract Call Reentrancy Lock using Host Invocation Key
 
 ## Overview
 Secure token transfer entry points by implementing an advanced reentrancy protection check using host invocation key inspections.
@@ -219,10 +219,10 @@ Secure token transfer entry points by implementing an advanced reentrancy protec
 """
     },
     {
-        "id": "065",
+        "id": "074",
         "title": "Time-Locked Multi-Sig Master Admin Safe",
         "labels": ["smart-contract", "governance", "hard"],
-        "body": """# #065: Time-Locked Multi-Sig Master Admin Safe
+        "body": """# #074: Time-Locked Multi-Sig Master Admin Safe
 
 ## Overview
 Create a time-locked multi-signature vault configuration acting as the master owner of the contract, enforcing a 7-day timelock delay on critical updates.
@@ -239,10 +239,10 @@ Create a time-locked multi-signature vault configuration acting as the master ow
 """
     },
     {
-        "id": "066",
+        "id": "075",
         "title": "Merkle Tree Batch Task Creation and Escrow Funding",
         "labels": ["smart-contract", "performance", "hard"],
-        "body": """# #066: Merkle Tree Batch Task Creation and Escrow Funding
+        "body": """# #075: Merkle Tree Batch Task Creation and Escrow Funding
 
 ## Overview
 Optimize gas costs for creating bulk tasks by storing a single Merkle root representing task descriptions and funding them collectively in one transaction.
@@ -259,10 +259,10 @@ Optimize gas costs for creating bulk tasks by storing a single Merkle root repre
 """
     },
     {
-        "id": "067",
+        "id": "076",
         "title": "Dynamic Fee Schedule Optimization Model",
         "labels": ["smart-contract", "defi", "hard"],
-        "body": """# #067: Dynamic Fee Schedule Optimization Model
+        "body": """# #076: Dynamic Fee Schedule Optimization Model
 
 ## Overview
 Optimize contract fee collection by implementing a dynamic schedule that programmatically adjusts platform basis points based on TVL and transaction frequency.
@@ -279,10 +279,10 @@ Optimize contract fee collection by implementing a dynamic schedule that program
 """
     },
     {
-        "id": "068",
+        "id": "077",
         "title": "Cryptographic Signature-Based Gasless Task Assignment",
         "labels": ["smart-contract", "auth", "hard"],
-        "body": """# #068: Cryptographic Signature-Based Gasless Task Assignment
+        "body": """# #077: Cryptographic Signature-Based Gasless Task Assignment
 
 ## Overview
 Allow contributors to claim tasks gaslessly using cryptographic ECDSA signatures signed off-chain and verified inside the smart contract by a gas relayer.
@@ -299,10 +299,10 @@ Allow contributors to claim tasks gaslessly using cryptographic ECDSA signatures
 """
     },
     {
-        "id": "069",
+        "id": "078",
         "title": "Decentralized Oracle Integration for Milestone Verification",
         "labels": ["smart-contract", "oracle", "hard"],
-        "body": """# #069: Decentralized Oracle Integration for Milestone Verification
+        "body": """# #078: Decentralized Oracle Integration for Milestone Verification
 
 ## Overview
 Integrate decentralized oracles to automatically verify GitHub Pull Request mergers, automating milestone payouts without creator intervention.
@@ -319,10 +319,10 @@ Integrate decentralized oracles to automatically verify GitHub Pull Request merg
 """
     },
     {
-        "id": "070",
+        "id": "079",
         "title": "Cross-Chain Escrow Settlement Bridge",
         "labels": ["smart-contract", "bridge", "hard"],
-        "body": """# #070: Cross-Chain Escrow Settlement Bridge
+        "body": """# #079: Cross-Chain Escrow Settlement Bridge
 
 ## Overview
 Build a bridge interface to allow cross-chain task rewards deposited on EVM chains to trigger task listings and payouts natively on Soroban.
@@ -339,10 +339,10 @@ Build a bridge interface to allow cross-chain task rewards deposited on EVM chai
 """
     },
     {
-        "id": "071",
+        "id": "080",
         "title": "Task Collateral Staking for Contributor Accountability",
         "labels": ["smart-contract", "reputation", "hard"],
-        "body": """# #071: Task Collateral Staking for Contributor Accountability
+        "body": """# #080: Task Collateral Staking for Contributor Accountability
 
 ## Overview
 Require assignees to stake collateral when claiming tasks. The collateral is automatically returned on completion, or slashed and refunded to the creator if abandoned.
@@ -359,10 +359,10 @@ Require assignees to stake collateral when claiming tasks. The collateral is aut
 """
     },
     {
-        "id": "072",
+        "id": "081",
         "title": "Privacy-Preserving Reputation Leaderboard using Oblivious Transfer",
         "labels": ["smart-contract", "cryptography", "hard"],
-        "body": """# #072: Privacy-Preserving Reputation Leaderboard using Oblivious Transfer
+        "body": """# #081: Privacy-Preserving Reputation Leaderboard using Oblivious Transfer
 
 ## Overview
 Implement an obfuscated ranking protocol that ranks users on the leaderboard without disclosing their exact reputation score.
@@ -379,10 +379,10 @@ Implement an obfuscated ranking protocol that ranks users on the leaderboard wit
 """
     },
     {
-        "id": "073",
+        "id": "082",
         "title": "Fuzzing Escrow and Milestone States with Echidna/Proptest",
         "labels": ["testing", "fuzzing", "hard"],
-        "body": """# #073: Fuzzing Escrow and Milestone States with Echidna/Proptest
+        "body": """# #082: Fuzzing Escrow and Milestone States with Echidna/Proptest
 
 ## Overview
 Build a stateful fuzzing environment that executes arbitrary series of milestone modifications to verify that escrow funds can never be locked or over-allocated.
@@ -399,10 +399,10 @@ Build a stateful fuzzing environment that executes arbitrary series of milestone
 """
     },
     {
-        "id": "074",
+        "id": "083",
         "title": "Multi-Stablecoin Swap Path Optimization for Escrows",
         "labels": ["smart-contract", "defi", "hard"],
-        "body": """# #074: Multi-Stablecoin Swap Path Optimization for Escrows
+        "body": """# #083: Multi-Stablecoin Swap Path Optimization for Escrows
 
 ## Overview
 Integrate swap routes inside task creation to allow creators to fund escrows with arbitrary tokens, swapping them atomically to the target stablecoin.
@@ -419,10 +419,10 @@ Integrate swap routes inside task creation to allow creators to fund escrows wit
 """
     },
     {
-        "id": "075",
+        "id": "084",
         "title": "Dynamic Reputation Decay Mechanism",
         "labels": ["smart-contract", "reputation", "hard"],
-        "body": """# #075: Dynamic Reputation Decay Mechanism
+        "body": """# #084: Dynamic Reputation Decay Mechanism
 
 ## Overview
 Implement an on-chain decay function that periodically reduces reputation points for inactive accounts, prompting continuous ecosystem contribution.
@@ -439,10 +439,10 @@ Implement an on-chain decay function that periodically reduces reputation points
 """
     },
     {
-        "id": "076",
+        "id": "085",
         "title": "Decentralized Dispute Escrow Splitting with Multi-Sig Arbitration",
         "labels": ["smart-contract", "governance", "hard"],
-        "body": """# #076: Decentralized Dispute Escrow Splitting with Multi-Sig Arbitration
+        "body": """# #085: Decentralized Dispute Escrow Splitting with Multi-Sig Arbitration
 
 ## Overview
 Enhance dispute resolution to allow arbitrators to split escrowed funds among multiple assignees and creators according to specific negotiated percentages.
@@ -459,10 +459,10 @@ Enhance dispute resolution to allow arbitrators to split escrowed funds among mu
 """
     },
     {
-        "id": "077",
+        "id": "086",
         "title": "Soroban WASM Size Reduction & AssemblyScript Porting Review",
         "labels": ["performance", "tooling", "hard"],
-        "body": """# #077: Soroban WASM Size Reduction & AssemblyScript Porting Review
+        "body": """# #086: Soroban WASM Size Reduction & AssemblyScript Porting Review
 
 ## Overview
 Audit and optimize WASM compiler structures, refactoring heavy library calls into micro-sized helpers to fit within Soroban limits.
@@ -479,10 +479,10 @@ Audit and optimize WASM compiler structures, refactoring heavy library calls int
 """
     },
     {
-        "id": "078",
+        "id": "087",
         "title": "Delegated Voting Power with Decay & Revocation",
         "labels": ["smart-contract", "governance", "hard"],
-        "body": """# #078: Delegated Voting Power with Decay & Revocation
+        "body": """# #087: Delegated Voting Power with Decay & Revocation
 
 ## Overview
 Implement liquid democracy delegation features in `governance.rs` allowing users to delegate voting weight with automatic decay.
@@ -499,10 +499,10 @@ Implement liquid democracy delegation features in `governance.rs` allowing users
 """
     },
     {
-        "id": "079",
+        "id": "088",
         "title": "Time-Locked Milestone Vesting Vaults",
         "labels": ["smart-contract", "defi", "hard"],
-        "body": """# #079: Time-Locked Milestone Vesting Vaults
+        "body": """# #088: Time-Locked Milestone Vesting Vaults
 
 ## Overview
 Create time-locked vesting vaults for approved milestone payouts, allowing a holding period during which payouts can be disputed.
@@ -519,10 +519,10 @@ Create time-locked vesting vaults for approved milestone payouts, allowing a hol
 """
     },
     {
-        "id": "080",
+        "id": "089",
         "title": "Sybil-Resistant Identity Staking and Verification",
         "labels": ["smart-contract", "security", "hard"],
-        "body": """# #080: Sybil-Resistant Identity Staking and Verification
+        "body": """# #089: Sybil-Resistant Identity Staking and Verification
 
 ## Overview
 Protect governance voting against Sybil attacks by integrating Gitcoin Passport cryptographic proofs or local KYC anchor verification.
@@ -539,10 +539,10 @@ Protect governance voting against Sybil attacks by integrating Gitcoin Passport 
 """
     },
     {
-        "id": "081",
+        "id": "090",
         "title": "Comprehensive Stress-Testing & Gas Profiling Pipeline",
         "labels": ["testing", "performance", "hard"],
-        "body": """# #081: Comprehensive Stress-Testing & Gas Profiling Pipeline
+        "body": """# #090: Comprehensive Stress-Testing & Gas Profiling Pipeline
 
 ## Overview
 Build automated stress-testing scripts to profile gas consumption limits under heavy concurrent operations (e.g. 500 active tasks, 1000 claims).
@@ -559,10 +559,10 @@ Build automated stress-testing scripts to profile gas consumption limits under h
 """
     },
     {
-        "id": "082",
+        "id": "091",
         "title": "On-Chain Audit Log with Ephemeral State Proofs",
         "labels": ["smart-contract", "audit", "hard"],
-        "body": """# #082: On-Chain Audit Log with Ephemeral State Proofs
+        "body": """# #091: On-Chain Audit Log with Ephemeral State Proofs
 
 ## Overview
 Implement an audit log system that writes cryptographic state root hashes on-chain, enabling off-chain indexers to verify historical state.
@@ -579,10 +579,10 @@ Implement an audit log system that writes cryptographic state root hashes on-cha
 """
     },
     {
-        "id": "083",
+        "id": "092",
         "title": "Upgradeable Storage Layout and Struct Migrator",
         "labels": ["smart-contract", "architecture", "hard"],
-        "body": """# #083: Upgradeable Storage Layout and Struct Migrator
+        "body": """# #092: Upgradeable Storage Layout and Struct Migrator
 
 ## Overview
 Design a dynamic on-chain migration framework that converts legacy data structure versions (e.g. Task v1) to updated formats on-the-fly.
@@ -599,10 +599,10 @@ Design a dynamic on-chain migration framework that converts legacy data structur
 """
     },
     {
-        "id": "084",
+        "id": "093",
         "title": "Decentralized Reward Treasury Vesting & Distribution Manager",
         "labels": ["smart-contract", "defi", "hard"],
-        "body": """# #084: Decentralized Reward Treasury Vesting & Distribution Manager
+        "body": """# #093: Decentralized Reward Treasury Vesting & Distribution Manager
 
 ## Overview
 Implement a vesting scheduler for the protocol reward treasury, releasing community incentives along a decay curve.
@@ -619,10 +619,10 @@ Implement a vesting scheduler for the protocol reward treasury, releasing commun
 """
     },
     {
-        "id": "085",
+        "id": "094",
         "title": "Multi-Signature Role Management Recovery Protocol",
         "labels": ["smart-contract", "security", "hard"],
-        "body": """# #085: Multi-Signature Role Management Recovery Protocol
+        "body": """# #094: Multi-Signature Role Management Recovery Protocol
 
 ## Overview
 Build an emergency social recovery mechanism for administrative roles using threshold signatures from Master/Legend tier users.
