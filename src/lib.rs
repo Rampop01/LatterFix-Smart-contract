@@ -2,6 +2,7 @@
 use soroban_sdk::unwrap::UnwrapOptimized;
 
 pub mod access_control;
+pub mod benchmark;
 pub mod escrow;
 pub mod events;
 pub mod governance;
@@ -35,7 +36,7 @@ mod upgrade_test;
 #[cfg(test)]
 mod vesting_vault_test;
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
 
 // ============================================================================
 // Task Management Types
@@ -709,7 +710,7 @@ impl TaskManagerContract {
         task_id: u32,
         milestone_id: u32,
         vesting_period: u64,
-        feedback: Option<String>,
+        feedback: Option<Symbol>,
     ) -> u32 {
         caller.require_auth();
 
@@ -766,7 +767,7 @@ impl TaskManagerContract {
             reputation::points_for_event(reputation::ReputationEventType::MilestoneApproved),
             reputation::ReputationEventType::MilestoneApproved,
             Some(task_id),
-            String::from_str(&env, "Milestone approved with vesting"),
+            Symbol::new(&env, "vested"),
         );
 
         vault_id
