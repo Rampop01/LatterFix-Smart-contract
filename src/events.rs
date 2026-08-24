@@ -1,4 +1,4 @@
-use soroban_sdk::{symbol_short, Address, Env, Symbol};
+use soroban_sdk::{symbol_short, Address, Env, String, Symbol};
 
 // ── Task Events ────────────────────────────────────────────────────────────
 pub fn emit_task_created(env: &Env, task_id: u32, creator: Address, title: Symbol, reward: i128) {
